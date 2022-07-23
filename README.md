@@ -2,9 +2,12 @@
 LunarGE (Game engine / Graphics Engine) is an in-development light-ish weight engine written in c++, and uses the Vulkan graphics api. *Planned* supported scripting languages are c++, lua, and python.
 
 ***Contents***
-[Structure](#structure)
 
-# Structure
+[Structure](#structure)
+[Code Examples](#code-examples)
+[Libraries and API's](#libraries-and-apis)
+
+## Structure
 
 *The structure of LunarGE has possibly reached its final form, and it goes like this:*
 
@@ -34,7 +37,15 @@ LunarGE (Game engine / Graphics Engine) is an in-development light-ish weight en
 - These scripts can access parent scene scripts, the parent scene, and the instance
 
 
+## Code Examples
 ```c++
-    
+    std::cout << "your mother" << std::endl;
 
 ```
+
+## Libraries and API's
+- [Vulkan 1.3](https://www.vulkan.org/)
+- [SDL2](https://www.libsdl.org/)
+- [VMA *Vulkan Memory Allocator*](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
+- [VkBootstrap](https://github.com/charles-lunarg/vk-bootstrap)
+- [glm](https://github.com/g-truc/glm)
