@@ -59,6 +59,25 @@ bool __cdecl lunar::CompareFlags(uint32_t lflag, uint32_t lcompare)
     return (lflag & lcompare) == lcompare;
 }
 
+void __cdecl lunar::QueuePushback(Lambda_vec *functionqueue, Lambda_func functions)
+{
+    functionqueue->push_back(functions);
+}
+void __cdecl lunar::RqueueUse(Lambda_vec functionqueue)
+{
+    for (auto i = functionqueue.rbegin(); i != functionqueue.rend(); ++i)
+    {
+        (*i)();
+    }
+}
+void __cdecl lunar::QueueUse(Lambda_vec functionqueue)
+{
+    for (auto i = functionqueue.begin(); i != functionqueue.end(); ++i)
+    {
+        (*i)();
+    }
+}
+
 lunar::Lresult<string> __cdecl lunar::ReadFile(string path)
 {
     Lresult<string> result;
@@ -135,8 +154,4 @@ lunar::Lresult<string> __cdecl lunar::GetLine(string path, int line)
     res.result = "";
     res.message = string("Failed to get line [ " + line) + " ] for file + [ " + path + " ]" ; 
     return res;
-}
-string __cdecl lunar::CurrentPath()
-{
-    return std::filesystem::current_path().u8string();
 }

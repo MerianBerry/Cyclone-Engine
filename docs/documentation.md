@@ -13,6 +13,19 @@ This file will include the entirety of the documentation for Lunar because I don
 
 ## Types
 
+```c++
+
+*The typical ouput of all complex Lunar methods*
+template<typename T>
+struct Lresult
+{
+    string message;
+    T result;
+    Uint32 error_code = LUNAR_ERROR_SUCCESS;
+};
+
+```
+
 ## Non-Engine specific methods
 
 ## Instance

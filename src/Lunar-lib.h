@@ -221,11 +221,10 @@ namespace lunar
 
     bool __cdecl CompareFlags(uint32_t lflag_first, uint32_t lflag_second);
 
-    void __cdecl queue_pushback(Lambda_vec *functionqueue, Lambda_func functions);
-    void __cdecl Rqueue_use(Lambda_vec functionqueue);
-    void __cdecl queue_use(Lambda_vec functionqueue);
+    void __cdecl QueuePushback(Lambda_vec *functionqueue, Lambda_func functions);
+    void __cdecl RqueueUse(Lambda_vec functionqueue);
+    void __cdecl QueueUse(Lambda_vec functionqueue);
 
-    string __cdecl PathToString(std::filesystem::path path);
 
     Lresult<string> __cdecl ReadFile(string path);
 
@@ -238,5 +237,5 @@ namespace lunar
 
     Lresult<string> __cdecl GetLine(string path, int line);
 
-    string __cdecl CurrentPath();
+    string __cdecl CurrentDir();
 }
