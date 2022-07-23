@@ -4,7 +4,9 @@ LunarGE (Game engine / Graphics Engine) is an in-development light-ish weight en
 ***Contents***
 
 [Structure](#structure)
+
 [Code Examples](#code-examples)
+
 [Libraries and API's](#libraries-and-apis)
 
 ## Structure
