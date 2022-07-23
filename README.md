@@ -1,14 +1,20 @@
-# Help?
+# What is Lunar?
+LunarGE (Game engine / Graphics Engine) is an in-development light-ish weight engine written in c++, and uses the Vulkan graphics api. *Planned* supported scripting languages are c++, lua, and python.
+
+***Contents***
+[Structure](#structure)
+
+# Structure
 
 *The structure of LunarGE has possibly reached its final form, and it goes like this:*
 
 **Lunar Instance**
-    - Vulkan instance
-    - Device
-    - Physical device
-    - Debug messanger
-    - Command pool
-    - And other global contexts
+- Vulkan instance
+- Vulkan Device
+- Vulkan Physical device
+- Vulkan Debug messanger
+- Vulkan Command pool
+- And other global contexts
 
 **-> Lunar Scene**
 - Scenes represent physical window contexts
