@@ -1274,3 +1274,5 @@ things/VulkanMemoryAllocator-master/bin/Shader.frag.spv
 docs/documentation.docx
 docs/heiarchy-format.docx
 docs/issues.docx
+src/SELR_inits.cpp
+src/SELR_inits.h

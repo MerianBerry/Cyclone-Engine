@@ -2,6 +2,7 @@
 
 #include "vulkan.h"
 #include "VkBootstrap.h"
+
 namespace vkinit {
 
 	VkCommandPoolCreateInfo command_pool_create_info(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags = 0);

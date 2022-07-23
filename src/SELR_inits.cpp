@@ -109,7 +109,7 @@ VkPipelineMultisampleStateCreateInfo vkinit::multisampling_state_create_info()
 	info.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 	info.pNext = nullptr;
 
-	info.sampleShadingEnable = VK_FALSE;
+	info.sampleShadingEnable = VK_FALSE; 
 	//multisampling defaulted to no multisampling (1 sample per pixel)
 	info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 	info.minSampleShading = 1.0f;
