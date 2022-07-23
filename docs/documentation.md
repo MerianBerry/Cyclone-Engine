@@ -4,15 +4,11 @@ This file will include the entirety of the documentation for Lunar because I don
 
 ### *Contents*
 
-[Types](#types)
-
-[Non-Engine specific methods](#non-engine-specific-methods)
-
-[Instance](#lunar-instance)
-
-[Scenes](#scenes)
-
-[Scene scripts](#scene-scripts)
+1. [Types](#types)
+2. [Non-Engine specific methods](#non-engine-specific-methods)
+3. [Instance](#lunar-instance)
+4. [Scenes](#scenes)
+5. [Scene scripts](#scene-scripts)
 
 
 ## Types

@@ -7,11 +7,11 @@
 #include "vulkan.h"
 #include "math.h"
 #include <vector>
-#include <string>
 #include <chrono>
 #include <thread>
 #include <functional>
-#include <filesystem>
+
+
 #undef main
 
 #define LUNAR_POLL_APPLICATION while(!Lunar::getQuitStatus()) {

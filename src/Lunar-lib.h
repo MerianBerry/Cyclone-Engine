@@ -6,7 +6,7 @@ namespace lunar
     template<typename T>
     struct Lresult
     {
-        const char* message;
+        string message;
         T result;
         Uint32 error_code = LUNAR_ERROR_SUCCESS;
     };
@@ -22,6 +22,7 @@ namespace lunar
     struct timer
     {
         std::chrono::steady_clock::time_point start_time;
+        std::chrono::steady_clock::time_point pause_time;
     };
     
     struct cmdqueue_create_info
@@ -214,8 +215,9 @@ namespace lunar
     void WaitMS(uint32_t milliseconds);
     void WaitMCS(Uint32 microseconds);
     Lresult<std::chrono::steady_clock::time_point> __cdecl StartStopwatch(timer *timer);
-    Lresult<times> __cdecl CheckStopwatch(timer *timer);
-    Lresult<void*> __cdecl ResetStopwatch(timer *timer);
+    Lresult<times> __cdecl CheckStopwatch(timer *timer, std::chrono::steady_clock::time_point comparitor = std::chrono::high_resolution_clock::now());
+    Lresult<times> __cdecl PauseStopwatch(timer *timer);
+    Lresult<void> __cdecl ResetStopwatch(timer *timer);
 
     bool __cdecl CompareFlags(uint32_t lflag_first, uint32_t lflag_second);
 
@@ -223,5 +225,18 @@ namespace lunar
     void __cdecl Rqueue_use(Lambda_vec functionqueue);
     void __cdecl queue_use(Lambda_vec functionqueue);
 
-    string PathToString(std::filesystem::path path);
+    string __cdecl PathToString(std::filesystem::path path);
+
+    Lresult<string> __cdecl ReadFile(string path);
+
+    template<typename T>
+    Lresult<void> __cdecl WriteFile(string path, T contents = "");
+
+    Lresult<vector<string>> __cdecl GetFiles(string path, string extention_filter);
+
+    Lresult<vector<string>> __cdecl GetLines(string path);
+
+    Lresult<string> __cdecl GetLine(string path, int line);
+
+    string __cdecl CurrentPath();
 }
