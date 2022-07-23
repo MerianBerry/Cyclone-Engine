@@ -1,0 +1,30 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/things/VulkanMemoryAllocator-master/include",
+                "${workspaceFolder}/things/VulkanMemoryAllocator-master/src",
+                "${workspaceFolder}/things/VkBootstrap",
+                "${workspaceFolder}/things/glm",
+                "${workspaceFolder}/things/tinyobjloader",
+                "${workspaceFolder}/things/stb",
+                "${workspaceFolder}/",
+                "C:/VulkanSDK/1.3.211.0/Include/vulkan",
+                "C:/VulkanSDK/1.3.211.0/Include/SDL2"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "windowsSdkVersion": "10.0.19041.0",
+            "compilerPath": "C:/Program Files/LLVM/bin/clang++.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-clang-x64"
+        }
+    ],
+    "version": 4
+}
