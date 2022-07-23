@@ -1,17 +1,20 @@
-# whatam i doing
+# Help?
 
 *The structure of LunarGE has possibly reached its final form, and it goes like this:*
 
-**LunarGE Instance**
-- Vulkan instance
-- Device
-- Physical device, and debug 
-- And other global contexts
+**Lunar Instance**
+    - Vulkan instance
+    - Device
+    - Physical device
+    - Debug messanger
+    - Command pool
+    - And other global contexts
 
-**-> Scenes**
+**-> Lunar Scene**
 - Scenes represent physical window contexts
 - These run independently from each other
 - These Operate their own Event polling and Scene scripts
+- Scenes will also have their own command queues
 
 **--> Scene scripts**
 - These operate in the context of their parent scene, and can be accessed by anything lower than them, this also includes shader scripts

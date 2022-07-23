@@ -1,5 +1,19 @@
 #pragma once
 #include "VkBootstrap.h"
+
+#include "SDL.h"
+#include "SDL_vulkan.h"
+#include "glm.hpp" 
+#include "vulkan.h"
+#include "math.h"
+#include <vector>
+#include <string>
+#include <chrono>
+#include <thread>
+#include <functional>
+#include <filesystem>
+#undef main
+
 #define LUNAR_POLL_APPLICATION while(!Lunar::getQuitStatus()) {
 #define LUNAR_POLL_EVENTS(x, y) while(SDL_PollEvent(&x) != 0) { if(x.type == SDL_QUIT) Lunar::setQuitStatus(); if(y.status == LUNAR_STATUS_EVENT_IDLE) break;
 #define LUNAR_POLL_EVENTS_END }
