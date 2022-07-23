@@ -15,7 +15,8 @@ This file will include the entirety of the documentation for Lunar because I don
 
 ```c++
 
-*The typical ouput of all complex Lunar methods*
+//The typical ouput of all complex Lunar methods, the output of the method is stored in result.
+//You can debug errors using the message & error_code outputs.
 template<typename T>
 struct Lresult
 {
