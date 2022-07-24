@@ -1279,3 +1279,5 @@ src/SELR_inits.h
 src/main.cpp
 src/tst
 src/tst
+.vscode/tasks.json
+compile-depricated.bat

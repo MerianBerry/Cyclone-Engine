@@ -1,8 +1,82 @@
+#pragma once
+
+#ifdef __clang__
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wtautological-compare" // comparison of unsigned expression < 0 is always false
+    #pragma clang diagnostic ignored "-Wunused-private-field"
+    #pragma clang diagnostic ignored "-Wunused-parameter"
+    #pragma clang diagnostic ignored "-Wmissing-field-initializers"
+    #pragma clang diagnostic ignored "-Wnullability-completeness"
+    #pragma clang diagnostic ignored "-Wstring-plus-int"
+#endif
+
 #include "Lunar_defs.h"
 using std::string; using std::vector;
 
 namespace lunar
 {
+    template<typename T, typename D>
+    struct generaltype
+    {
+        T data;
+        std::function<void()> deleter;
+        generaltype (T t, D d)
+        {
+            data = t;
+            deleter = d;
+        }
+        operator T() const noexcept
+        {
+            return data;
+        }
+        T operator +(T t)
+        {
+            return data + t;
+        }
+        T operator +=(T t)
+        {
+            return (data+=t, data);
+        }
+        T operator -(T t)
+        {
+            return data - t;
+        }
+        T operator -=(T t)
+        {
+            return (data-=t, data);
+        }
+        T operator *(T t)
+        {
+            return data * t;
+        }
+        T operator *=(T t)
+        {
+            return (data*=t, data);
+        }
+        T operator /(T t)
+        {
+            return data / t;
+        }
+        T operator /=(T t)
+        {
+            return (data/=t, data);
+        }
+        T operator %(T t)
+        {
+            return data % t;
+        }
+        void operator =(T t)
+        {
+            data = t;
+        }
+        ~generaltype() noexcept
+        {
+            (deleter)();
+        }
+    };
+    template<typename T>
+    using Dtype = generaltype<T, std::function<void()>>;
+
     template<typename T>
     struct Lresult
     {
@@ -11,6 +85,18 @@ namespace lunar
         Uint32 error_code = LUNAR_ERROR_SUCCESS;
     };
 
+    typedef std::chrono::steady_clock::time_point SteadyTimePoint;
+
+    typedef VkAttachmentDescription attachment_info;
+    typedef VkAttachmentReference attachment_reference;
+    
+    typedef VkSubpassDescription subpass_description;
+    
+    typedef VkRenderPassCreateInfo renderpass_create_info;
+
+    typedef std::vector<std::function<void()>> Lambda_vec;
+    typedef std::function<void()> Lambda_func;
+
     struct times
     {
         float milliseconds;
@@ -18,11 +104,10 @@ namespace lunar
         float minutes;
         float hours;
     };
-
-    struct timer
+    struct StopWatch
     {
-        std::chrono::steady_clock::time_point start_time;
-        std::chrono::steady_clock::time_point pause_time;
+        SteadyTimePoint start_time;
+        SteadyTimePoint pause_time;
     };
     
     struct cmdqueue_create_info
@@ -60,50 +145,6 @@ namespace lunar
         Uint8 buffer_ammount;
     };
     
-    typedef VkAttachmentDescription attachment_info;
-    typedef VkAttachmentReference attachment_reference;
-    /*struct attachment_info
-    {
-        VkFormat format;
-        VkAttachmentDescription attachment = {};
-        VkAttachmentReference attachment_ref= {};
-        VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
-        VkAttachmentLoadOp loadOP = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        VkAttachmentStoreOp storeOP = VK_ATTACHMENT_STORE_OP_STORE;
-        VkAttachmentLoadOp stencil_loadOP = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        VkAttachmentStoreOp stencil_storeOP = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        VkImageLayout initial_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-        VkImageLayout final_layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        uint32_t ref_attachment_index = 0;
-        VkImageLayout ref_image_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    };*/
-    
-    typedef VkSubpassDescription subpass_description;
-    /*struct subpass_create_info
-    {
-        Lunar::types::attachment_reference *color_attatchments;
-        Uint8 color_attachment_count;
-
-        Lunar::types::attachment_reference *depthStincil_attatchment;
-
-        Uint32 bind_point = LUNAR_PIPELINE_BIND_POINT_GRAPHICS;
-
-        Uint32 flags;
-    };*/
-    
-    typedef VkRenderPassCreateInfo renderpass_create_info;
-    
-    /*struct renderpass_create_info
-    {
-        Uint8 subpass_count;
-        subpass_create_info *subpass_infos;
-
-        Uint8 attachment_count;
-        Lunar::types::attachment_info *attachment_infos;
-
-        Uint32 flags;
-    };*/
-    
     struct framebuffer_create_info
     {
         Uint32 layers;
@@ -117,9 +158,6 @@ namespace lunar
 
         Uint32 present_mode;
     };
-
-    typedef std::vector<std::function<void()>> Lambda_vec;
-    typedef std::function<void()> Lambda_func;
 
     struct swapchain
     {
@@ -182,8 +220,6 @@ namespace lunar
 
         const char* name = "LunarGE application";
 
-        //Lunar::types::window window;
-
         swapchain swapchain;
 
         VkRenderPass render_pass;
@@ -214,12 +250,12 @@ namespace lunar
     float get_time_since_start(uint32_t lformat = LUNAR_TIME_MILLISECONDS);
     void WaitMS(uint32_t milliseconds);
     void WaitMCS(Uint32 microseconds);
-    Lresult<std::chrono::steady_clock::time_point> __cdecl StartStopwatch(timer *timer);
-    Lresult<times> __cdecl CheckStopwatch(timer *timer, std::chrono::steady_clock::time_point comparitor = std::chrono::high_resolution_clock::now());
-    Lresult<times> __cdecl PauseStopwatch(timer *timer);
-    Lresult<void> __cdecl ResetStopwatch(timer *timer);
+    Lresult<SteadyTimePoint> __cdecl StartStopwatch(StopWatch *timer);
+    Lresult<times> __cdecl CheckStopwatch(StopWatch timer, SteadyTimePoint comparitor = std::chrono::high_resolution_clock::now());
+    Lresult<times> __cdecl PauseStopwatch(StopWatch *timer);
+    Lresult<void*> __cdecl ResetStopwatch(StopWatch *timer);
 
-    bool __cdecl CompareFlags(uint32_t lflag_first, uint32_t lflag_second);
+    bool __cdecl CompareFlags(Uint32 lflag_first, Uint32 lflag_second);
 
     void __cdecl QueuePushback(Lambda_vec *functionqueue, Lambda_func functions);
     void __cdecl RqueueUse(Lambda_vec functionqueue);
@@ -229,7 +265,10 @@ namespace lunar
     Lresult<string> __cdecl ReadFile(string path);
 
     template<typename T>
-    Lresult<void> __cdecl WriteFile(string path, T contents = "");
+    Lresult<void*> __cdecl WriteFile(string path, T contents = "");
+
+    template<typename T>
+    Lresult<void*> AppendFile(string path, T addition);
 
     Lresult<vector<string>> __cdecl GetFiles(string path, string extention_filter);
 
@@ -237,5 +276,9 @@ namespace lunar
 
     Lresult<string> __cdecl GetLine(string path, int line);
 
-    string __cdecl CurrentDir();
+    string __cdecl GetCurrentDir();
+
+    Lresult<void*> __cdecl CopyFile(string from, string to);
+
+    Lresult<void*> __cdecl CopyAllFiles(string from, string to);
 }

@@ -12,7 +12,10 @@ This file will include the entirety of the documentation for Lunar because I don
 
 
 ## Types
+1. [Lunar basic types](#lunar-basic-types)
+2. [Vulkan types](#vulkan-types)
 
+### Lunar basic types
 ```c++
 
 //The typical ouput of all complex Lunar methods, the output of the method is stored in result.
@@ -24,6 +27,31 @@ struct Lresult
     T result;
     Uint32 error_code = LUNAR_ERROR_SUCCESS;
 };
+
+typedef std::chrono::steady_clock::time_point SteadyTimePoint;
+
+typedef std::vector<std::function<void()>> Lambda_vec;
+typedef std::function<void()> Lambda_func;
+
+struct times
+{
+    float milliseconds;
+    float seconds;
+    float minutes;
+    float hours;
+};
+struct StopWatch
+{
+    SteadyTimePoint start_time;
+    SteadyTimePoint pause_time;
+};
+
+```
+
+### Vulkan types
+
+```c++
+
 
 ```
 
