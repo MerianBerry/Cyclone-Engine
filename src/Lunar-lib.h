@@ -16,11 +16,11 @@ using std::string; using std::vector;
 namespace lunar
 {
     template<typename T, typename D>
-    struct generaltype
+    struct generictype
     {
         T data;
         std::function<void()> deleter;
-        generaltype (T t, D d)
+        generictype (T t, D d)
         {
             data = t;
             deleter = d;
@@ -61,21 +61,17 @@ namespace lunar
         {
             return (data/=t, data);
         }
-        T operator %(T t)
-        {
-            return data % t;
-        }
         void operator =(T t)
         {
             data = t;
         }
-        ~generaltype() noexcept
+        ~generictype() noexcept
         {
             (deleter)();
         }
     };
     template<typename T>
-    using Dtype = generaltype<T, std::function<void()>>;
+    using Dtype = generictype<T, std::function<void()>>;
 
     template<typename T>
     struct Lresult
