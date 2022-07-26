@@ -10,11 +10,14 @@
     #pragma clang diagnostic ignored "-Wstring-plus-int"
 #endif
 
-#include "Lunar_defs.h"
+#include "Lunar-defs.h"
 using std::string; using std::vector;
 
 namespace lunar
 {
+    template<typename T>
+    using Lambda = std::function<void(T)>;
+
     template<typename T, typename D>
     struct generictype
     {
@@ -70,7 +73,7 @@ namespace lunar
             (deleter)();
         }
     };
-    template<typename T>
+    template<typename T, typename D>
     using Dtype = generictype<T, std::function<void()>>;
 
     template<typename T>

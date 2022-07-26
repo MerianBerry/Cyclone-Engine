@@ -1267,10 +1267,6 @@ shaders/tri_mesh.vert.spv
 things/VulkanMemoryAllocator-master/bin/Shader.frag.spv
 things/VulkanMemoryAllocator-master/bin/Shader.vert.spv
 things/VulkanMemoryAllocator-master/bin/VmaSample_Release_vs2019.exe
-things/VulkanMemoryAllocator-master/bin/Shader.frag.spv
-things/VulkanMemoryAllocator-master/bin/Shader.vert.spv
-things/VulkanMemoryAllocator-master/bin/VmaSample_Release_vs2019.exe
-things/VulkanMemoryAllocator-master/bin/Shader.frag.spv
 docs/documentation.docx
 docs/heiarchy-format.docx
 docs/issues.docx
@@ -1281,3 +1277,33 @@ src/tst
 src/tst
 .vscode/tasks.json
 compile-depricated.bat
+src/LunarGE.cpp
+src/LunarGE.h
+src/main.cpp
+src/depricated/Lunar_inttypes.h
+src/depricated/Lunar_textures.cpp
+src/depricated/Lunar_textures.h
+src/depricated/Lunar_types.h
+src/depricated/Lunar_util.cpp
+src/depricated/Lunar_util.h
+src/depricated/LunarGE.cpp
+src/depricated/LunarGE.h
+src/depricated/main.cpp
+src/depricated/SELR_internal.cpp
+src/depricated/Selroc_fapi.cpp
+src/depricated/Selroc.h
+src/depricated/time.cpp
+src/depricated/tmp_main.cpp
+distro _test/shaders/default_lit.frag.spv
+distro _test/shaders/textured_lit.frag.spv
+src/testing.h
+src/testing2.cpp
+things/VulkanMemoryAllocator-master/bin/Shader.frag.spv
+things/VulkanMemoryAllocator-master/bin/Shader.vert.spv
+things/VulkanMemoryAllocator-master/bin/VmaSample_Release_vs2019.exe
+things/VulkanMemoryAllocator-master/bin/Shader.frag.spv
+things/VulkanMemoryAllocator-master/bin/Shader.vert.spv
+things/VulkanMemoryAllocator-master/bin/VmaSample_Release_vs2019.exe
+things/VulkanMemoryAllocator-master/bin/Shader.frag.spv
+things/VulkanMemoryAllocator-master/bin/Shader.vert.spv
+things/VulkanMemoryAllocator-master/bin/VmaSample_Release_vs2019.exe

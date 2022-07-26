@@ -15,8 +15,6 @@ LunarGE (Game engine / Graphics Engine) is an in-development light-ish weight en
 
 **Lunar Instance**
 - Vulkan instance
-- Vulkan Device
-- Vulkan Physical device
 - Vulkan Debug messanger
 - Vulkan Command pool
 - And other global contexts
@@ -26,6 +24,8 @@ LunarGE (Game engine / Graphics Engine) is an in-development light-ish weight en
 - These run independently from each other
 - These Operate their own Event polling and Scene scripts
 - Scenes will also have their own command queues
+- Vulkan Physical device
+- Vulkan Device
 
 **--> Scene scripts**
 - These operate in the context of their parent scene, and can be accessed by anything lower than them, this also includes shader scripts

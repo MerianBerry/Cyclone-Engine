@@ -176,7 +176,7 @@ lunar::Lresult<string> __cdecl lunar::GetLine(string path, int line)
 }
 string __cdecl lunar::GetCurrentDir()
 {
-    Dtype<VkInstance> h(NULL, [](){ });
+    
     return std::filesystem::current_path().u8string();
     
 }
