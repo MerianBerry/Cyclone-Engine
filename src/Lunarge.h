@@ -8,10 +8,12 @@
     #pragma clang diagnostic ignored "-Wmissing-field-initializers"
     #pragma clang diagnostic ignored "-Wnullability-completeness"
     #pragma clang diagnostic ignored "-Wstring-plus-int"
+    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    #pragma clang diagnostic ignored "-Wunused-result"
 #endif
 
 #include "Lunar-defs.h"
-using std::string; using std::vector;
+using std::string; using std::vector; using std::function;
 
 namespace lunar
 {
@@ -84,20 +86,13 @@ namespace lunar
         Uint32 error_code = LUNAR_ERROR_SUCCESS;
     };
 
-    typedef std::chrono::steady_clock::time_point SteadyTimePoint;
-
-    typedef VkAttachmentDescription attachment_info;
-    typedef VkAttachmentReference attachment_reference;
-    
-    typedef VkSubpassDescription subpass_description;
-    
-    typedef VkRenderPassCreateInfo renderpass_create_info;
-
     typedef std::vector<std::function<void()>> Lambda_vec;
     typedef std::function<void()> Lambda_func;
 
+    typedef std::chrono::steady_clock::time_point SteadyTimePoint;
     struct times
     {
+        float microseconds;
         float milliseconds;
         float seconds;
         float minutes;
@@ -108,7 +103,14 @@ namespace lunar
         SteadyTimePoint start_time;
         SteadyTimePoint pause_time;
     };
+
+    typedef VkAttachmentDescription attachment_info;
+    typedef VkAttachmentReference attachment_reference;
     
+    typedef VkSubpassDescription subpass_description;
+    
+    typedef VkRenderPassCreateInfo renderpass_create_info;
+
     struct cmdqueue_create_info
     {
         Uint8 amount;
@@ -171,14 +173,14 @@ namespace lunar
         std::vector<VkImageView> vk_swapchain_image_views;
     };
 
-    struct window
+    struct Window
     {
         SDL_Window *sdl_handle;
         VkExtent2D size = LUNAR_WINDOW_SIZE_DEFAULT;
         glm::vec2 pos = { SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED };
         VkSurfaceKHR surface;
         const char* title = "Babys first LunarGE game";
-        uint32_t flags = SDL_WINDOW_RESIZABLE;
+        uint32_t flags = 0;
     };
 
     struct cmd_queue
@@ -245,7 +247,6 @@ namespace lunar
         #endif
     };
 
-
     float get_time_since_start(uint32_t lformat = LUNAR_TIME_MILLISECONDS);
     void WaitMS(uint32_t milliseconds);
     void WaitMCS(Uint32 microseconds);
@@ -263,11 +264,9 @@ namespace lunar
 
     Lresult<string> __cdecl ReadFile(string path);
 
-    template<typename T>
-    Lresult<void*> __cdecl WriteFile(string path, T contents = "");
+    Lresult<void*> __cdecl WriteFile(string path, string contents = "");
 
-    template<typename T>
-    Lresult<void*> AppendFile(string path, T addition);
+    Lresult<void*> __cdecl AppendFile(string path, string addition);
 
     Lresult<vector<string>> __cdecl GetFiles(string path, string extention_filter);
 
@@ -280,4 +279,6 @@ namespace lunar
     Lresult<void*> __cdecl CopyFile(string from, string to);
 
     Lresult<void*> __cdecl CopyAllFiles(string from, string to);
+
+    bool __cdecl DoesFileExist(string path);
 }

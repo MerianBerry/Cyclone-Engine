@@ -81,6 +81,7 @@
         "resumable": "cpp",
         "future": "cpp",
         "cstdarg": "cpp",
-        "numeric": "cpp"
+        "numeric": "cpp",
+        "unordered_set": "cpp"
     }
 }

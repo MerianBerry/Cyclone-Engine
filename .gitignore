@@ -1277,8 +1277,6 @@ src/tst
 src/tst
 .vscode/tasks.json
 compile-depricated.bat
-src/LunarGE.cpp
-src/LunarGE.h
 src/main.cpp
 src/depricated/Lunar_inttypes.h
 src/depricated/Lunar_textures.cpp
@@ -1307,3 +1305,9 @@ things/VulkanMemoryAllocator-master/bin/VmaSample_Release_vs2019.exe
 things/VulkanMemoryAllocator-master/bin/Shader.frag.spv
 things/VulkanMemoryAllocator-master/bin/Shader.vert.spv
 things/VulkanMemoryAllocator-master/bin/VmaSample_Release_vs2019.exe
+src/testing3.cpp
+src/testinter.h
+config.txt
+log.txt
+src/Lunar-scene.h
+src/Lunar-scene.cpp

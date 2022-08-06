@@ -1,4 +1,4 @@
-#include "Lunar-lib.h"
+#include "Lunarge.h"
 #include <iostream>
 #include <filesystem>
 #include <sstream>
@@ -25,10 +25,11 @@ lunar::Lresult<lunar::times> __cdecl lunar::CheckStopwatch(StopWatch timer, Stea
 {
     Lresult<lunar::times> res;
 
-    res.result.milliseconds =  std::chrono::duration_cast<std::chrono::milliseconds>(comparitor - timer.start_time).count()/1.f;
+    res.result.milliseconds =  (float)std::chrono::duration_cast<std::chrono::milliseconds>(comparitor - timer.start_time).count();
+    res.result.microseconds = (float)std::chrono::duration_cast<std::chrono::microseconds>(comparitor - timer.start_time).count();
     res.result.seconds = res.result.milliseconds/1000.f;
-    res.result.minutes = res.result.milliseconds/60000.f;
-    res.result.hours = res.result.milliseconds/3600000.f;
+    res.result.minutes = res.result.seconds/60.f;
+    res.result.hours = res.result.minutes/60.f;
 
     res.message = "Stopwatch checked";
     return res;
@@ -39,10 +40,11 @@ lunar::Lresult<lunar::times> __cdecl lunar::PauseStopwatch(StopWatch *timer)
 
     timer->pause_time = std::chrono::high_resolution_clock::now();
 
-    res.result.milliseconds =  std::chrono::duration_cast<std::chrono::milliseconds>(timer->pause_time - timer->start_time).count()/1.f;
+    res.result.milliseconds =  (float)std::chrono::duration_cast<std::chrono::milliseconds>(timer->pause_time - timer->start_time).count();
+    res.result.microseconds = (float)std::chrono::duration_cast<std::chrono::microseconds>(timer->pause_time - timer->start_time).count();
     res.result.seconds = res.result.milliseconds/1000.f;
-    res.result.minutes = res.result.milliseconds/60000.f;
-    res.result.hours = res.result.milliseconds/3600000.f;
+    res.result.minutes = res.result.seconds/60.f;
+    res.result.hours = res.result.minutes/60.f;
 
     res.message = "Stopwatch paused";
     return res;
@@ -78,9 +80,19 @@ void __cdecl lunar::QueueUse(Lambda_vec functionqueue)
     }
 }
 
+bool __cdecl lunar::DoesFileExist(string path)
+{
+    return std::filesystem::exists(path);
+}
 lunar::Lresult<string> __cdecl lunar::ReadFile(string path)
 {
     Lresult<string> res;
+    if (!DoesFileExist(path))
+    {
+        res.error_code = LUNAR_ERROR_FILE_DOESNT_EXIST;
+        res.message + "Path: " + path + " does not exist";
+        return res;
+    }
     //opens an in file stream operation using the 'path' string
     std::ifstream t(path);
     //creates a stringstream buffer to hold the file data
@@ -92,30 +104,34 @@ lunar::Lresult<string> __cdecl lunar::ReadFile(string path)
     res.message = "File [ " + path + " ] has been opened";
     return res;
 }
-template<class T>
-lunar::Lresult<void*> __cdecl lunar::WriteFile(string path, T contents) {
+lunar::Lresult<void*> __cdecl lunar::WriteFile(string path, string contents) {
     Lresult<void*> res;
     std::ofstream outFile(path);
     if (outFile.is_open())
         outFile << contents;
     else
     {
-        res.message = "Failed to open rile [ " << path << " ]";
+        res.message = "Failed to open rile [ " + path + " ]";
         outFile.close();
     }
     return res;
 }
-template<typename T>
-lunar::Lresult<void*> lunar::AppendFile(string path, T addition)
+lunar::Lresult<void*> __cdecl lunar::AppendFile(string path, string addition)
 {
     Lresult<void*> res;
+    if (!DoesFileExist(path))
+    {
+        res.error_code = LUNAR_ERROR_FILE_DOESNT_EXIST;
+        res.message + "Path: " + path + " does not exist";
+        return res;
+    }
     std::ofstream outfile;
     outfile.open(path, std::ios_base::app);
     if ( outfile.is_open() )
         outfile << addition;
     else
     {
-        res.message = "Failed to open file [ " << path << " ]";
+        res.message = "Failed to open file [ " + path + " ]";
         outfile.close();
     }
     return res;
@@ -126,6 +142,12 @@ lunar::Lresult<vector<string>> __cdecl lunar::GetFiles(string path, string exten
     using std::filesystem::directory_iterator;
     vector<string> goodFiles;
     //A for loop that iterates through all the files in the file path
+    if (!DoesFileExist(path))
+    {
+        result.error_code = LUNAR_ERROR_FILE_DOESNT_EXIST;
+        result.message + "Path: " + path + " does not exist";
+        return result;
+    }
     for (const auto& file : directory_iterator(path)) {
         string help = file.path().string();
         //checks if the file extention is txt
@@ -143,7 +165,12 @@ lunar::Lresult<vector<string>> __cdecl lunar::GetLines(string path)
     Lresult<vector<string>> result;
 
     vector<string> got;
-
+    if (!DoesFileExist(path))
+    {
+        result.error_code = LUNAR_ERROR_FILE_DOESNT_EXIST;
+        result.message + "Path: " + path + " does not exist";
+        return result;
+    }
     std::ifstream input(path);
 
     for (string line; getline(input, line);)
@@ -176,7 +203,7 @@ lunar::Lresult<string> __cdecl lunar::GetLine(string path, int line)
 }
 string __cdecl lunar::GetCurrentDir()
 {
-    
     return std::filesystem::current_path().u8string();
-    
 }
+
+
