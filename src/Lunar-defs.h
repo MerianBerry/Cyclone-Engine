@@ -7,6 +7,9 @@
 #include "vulkan.h"
 #include "math.h"
 #include <vector>
+#include <string>
+#include <stdexcept>
+#include <array>
 #include <chrono>
 #include <thread>
 #include <functional>

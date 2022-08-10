@@ -1,7 +1,7 @@
 #include "Lunar-runtime.h"
 #include <iostream>
 
-lunar::Lambda_vec MasterDeletionQueue;
+lunar::Lambda_vec<void> MasterDeletionQueue;
 
 void labort()
 {
@@ -11,31 +11,30 @@ void labort()
 
 int main()
 {
+    lunar::StopWatch starting_time;
+    lunar::StartStopwatch( &starting_time );
+
     lunar::WriteFile("log.txt");
 
-    auto Lunr_start = std::chrono::high_resolution_clock::now();
-    auto _start = std::chrono::system_clock::now();
-	std::time_t sys_start_time = std::chrono::system_clock::to_time_t(_start);
-	std::cout << "LunarGE init time:: " << std::ctime(&sys_start_time) << std::endl;
-    lunar::AppendFile("log.txt", string("Lunarge init time:: ") + std::ctime(&sys_start_time));
+	auto sys_start_time = std::chrono::system_clock::to_time_t( std::chrono::system_clock::now() );
+    lunar_log( "Lunarge initiated at %s\n", std::ctime( &sys_start_time ) );
 
     lunar::StopWatch stopwatch;
     lunar::StartStopwatch(&stopwatch);
 
     if ( SDL_Init(SDL_INIT_EVERYTHING) != 0 )
     {
-        std::cout << "[Lunarge] SDL error: SDL failed to initilise\n";
+        lunar_log( "SDL error: SDL failed to initilise :(\n" )
         labort();
     }
-    printf("[Lunarge.log] SDL init time : %fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
-    lunar::AppendFile("log.txt", string("\nSDL init time: ") + std::to_string(lunar::CheckStopwatch(stopwatch).result.milliseconds) + "ms");
-    lunar::ResetStopwatch(&stopwatch);
+    lunar_log( "SDL initiated in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds );
+    lunar::ResetStopwatch( &stopwatch );
 
     vkb::InstanceBuilder inst_builder;
     vkb::Instance vkb_inst;
     VkDebugUtilsMessengerEXT debugger;
 
-    vkb_inst = inst_builder.set_app_name("Lunarge")
+    vkb_inst = inst_builder.set_app_name( "Lunarge" )
     .request_validation_layers()
     .require_api_version(1, 3, 0)
     .use_default_debug_messenger()
@@ -47,11 +46,10 @@ int main()
     [=]()
     {
         vkb::destroy_instance(vkb_inst);
-        printf("Destroyed vulkan instace\n");
+        lunar_log( "Destroyed vulkan (vkb) instance :)\n" )
     });
     
-    std::cout << "[Lunarge.log] Instance init time : " << lunar::CheckStopwatch(stopwatch).result.milliseconds << "ms\n";
-    lunar::AppendFile("log.txt", string("\nInstance init time: ") + std::to_string(lunar::CheckStopwatch(stopwatch).result.milliseconds) + "ms");
+    lunar_log("Vulkan instance initiated in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
     lunar::ResetStopwatch(&stopwatch);
 
     vector<string> config = lunar::GetLines("config.txt").result;
@@ -70,14 +68,7 @@ int main()
     SDL_SetWindowMinimumSize(mainwindow.sdl_handle, 960, 540);
     SDL_Vulkan_CreateSurface(mainwindow.sdl_handle, vkb_inst.instance, &mainwindow.surface);
 
-    MasterDeletionQueue.push_back(
-    [=]()
-    {
-        SDL_DestroyWindow(mainwindow.sdl_handle);
-    });
-
-    std::cout << "[LunarGE] Window creation has been completed in " << lunar::CheckStopwatch(stopwatch).result.milliseconds << "ms" << std::endl;
-    lunar::AppendFile("log.txt", string("\nWindow creation has been completed in ") + std::to_string(lunar::CheckStopwatch(stopwatch).result.milliseconds) + "ms");
+    lunar_log("Window creation has been completed in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
     lunar::ResetStopwatch(&stopwatch);
 
     //==============================GPU SELECTION================================
@@ -87,8 +78,7 @@ int main()
         .set_surface(mainwindow.surface)
         .select()
         .value();
-    std::cout << "[LunarGE] Physical device selected in " << lunar::CheckStopwatch(stopwatch).result.milliseconds << "ms" << std::endl;
-    lunar::AppendFile("log.txt", string("\nPhysical device selected in ") + std::to_string(lunar::CheckStopwatch(stopwatch).result.milliseconds) + "ms");
+    lunar_log("Physical device selected in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
     lunar::ResetStopwatch(&stopwatch);
 
     vkb::DeviceBuilder deviceBuilder{ phys_device };
@@ -99,35 +89,88 @@ int main()
 	shader_draw_parameters_features.shaderDrawParameters = VK_TRUE;
 
     vkb::Device vkbDevice = deviceBuilder.add_pNext(&shader_draw_parameters_features).build().value();
-    std::cout << "[LunarGE] Device has been selected in " << lunar::CheckStopwatch(stopwatch).result.milliseconds << "ms" << std::endl;
-    lunar::AppendFile("log.txt", string("\nDevice has been selected in ") + std::to_string(lunar::CheckStopwatch(stopwatch).result.milliseconds) + "ms");
+    
+    lunar_log("Device has been selected in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
     lunar::ResetStopwatch(&stopwatch);
+
+    
+
+    //=============================MF SWAPCHAIN==================================
+
+    vkb::Swapchain vkbSwapchain;
+    lunar::cmdqueue_create_info cmdQueueInfo;
+    cmdQueueInfo.amount = 1;
+    Uint32 fams[] = { LUNAR_QUEUETYPE_GRAPHICS };
+    cmdQueueInfo.families = fams;
+
+    lunar::Lambda_func<vkb::Swapchain> swipychain([=, &vkbSwapchain](){
+        vkb::SwapchainBuilder vkswapchain_builder{ phys_device, vkbDevice.device, mainwindow.surface};
+    
+        vkb::Swapchain vkb_swapchain = vkswapchain_builder
+        .set_desired_format((VkSurfaceFormatKHR){ VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR })
+        .set_format_feature_flags(VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)
+        //vulkan present mode
+        .set_desired_present_mode( VK_PRESENT_MODE_FIFO_KHR )
+        .set_desired_extent(mainwindow.size.width, mainwindow.size.height)
+        .build()
+        .value();
+        vkbSwapchain = vkb_swapchain;
+        return vkb_swapchain;
+    });
+    (swipychain)();
+
+    lunar_log("Command queue and swapchain created in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
+    lunar::ResetStopwatch(&stopwatch);
+
+    lunar::semaphore_create_info render_semaphore_info;
+    lunar::semaphore_create_info present_semaphore_info;
+
+    lunar::fence_create_info fence_info = { VK_FENCE_CREATE_SIGNALED_BIT };
+
+    
 
     MasterDeletionQueue.push_back(
     [=]()
     {
+        SDL_DestroyWindow(mainwindow.sdl_handle);
+        vkb::destroy_swapchain(vkbSwapchain);
         vkDestroySurfaceKHR(vkb_inst.instance, mainwindow.surface, nullptr);
         vkb::destroy_device(vkbDevice);
-        printf("Destroyed vulkan device\n");
+        lunar_log( "Destroyed vulkan (vkb) device :)\n" )
     });
+    
+    lunar_log( "Beggining runtime\n\n" )
     //================================RUNTIME====================================
     SDL_Event e;
-    bool die = false;
-    while (!die)
-    while(SDL_PollEvent(&e) != 0)
+    Uint32 runtime_status = LUNAR_STATUS_IDLE;
+    while (!lunar::CompareFlags(runtime_status, LUNAR_STATUS_QUIT))
     {
-        if (e.key.keysym.sym == SDLK_ESCAPE)
+        lunar::StopWatch frame_delta;
+        lunar::StartStopwatch(&frame_delta);
+        while(SDL_PollEvent(&e) != 0)
         {
-            die=true;
+            if (e.key.keysym.sym == SDLK_ESCAPE || e.type == SDL_QUIT)
+            {
+                runtime_status |= LUNAR_STATUS_QUIT;
+                break;
+            }
         }
+        //lunar::CheckStopwatch(frame_delta).result.milliseconds;
+        lunar::WaitMS(17);
     }
+    
+
+    //string hc[] = {"hello", "goodbye"};
+    //string hg[] = {"screw you", "sdfoiajd"};
+    //string hd[4];
+    //memcpy(hd, hc, sizeof(hc));
+    //memcpy(&hd[2], hg, sizeof(hg));
     
     //============================END OF RUNTIME=================================
     
-    std::cout << "\n[Lunarge] Lunarge is shutting down\n";
-    lunar::AppendFile("log.txt", "\n\nLunar is shutting down...");
-    std::cout << "[Lunarge.log] Runtime : " << lunar::CheckStopwatch(stopwatch).result.minutes << "m\n"; 
-    lunar::AppendFile("log.txt", string("\nLunarge runtime : ") + std::to_string(lunar::CheckStopwatch(stopwatch).result.minutes) + " minutes");
+    
+    lunar_log( "Lunarge is shutting down... code = %lu\n", runtime_status )
+    lunar_log( "Runtime duration was %0.2f minutes\n", lunar::CheckStopwatch(stopwatch).result.minutes )
     
     lunar::RqueueUse(MasterDeletionQueue);
     

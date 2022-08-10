@@ -25,8 +25,8 @@ lunar::Lresult<lunar::times> __cdecl lunar::CheckStopwatch(StopWatch timer, Stea
 {
     Lresult<lunar::times> res;
 
-    res.result.milliseconds =  (float)std::chrono::duration_cast<std::chrono::milliseconds>(comparitor - timer.start_time).count();
     res.result.microseconds = (float)std::chrono::duration_cast<std::chrono::microseconds>(comparitor - timer.start_time).count();
+    res.result.milliseconds =  res.result.microseconds/1000.f;
     res.result.seconds = res.result.milliseconds/1000.f;
     res.result.minutes = res.result.seconds/60.f;
     res.result.hours = res.result.minutes/60.f;
@@ -40,8 +40,8 @@ lunar::Lresult<lunar::times> __cdecl lunar::PauseStopwatch(StopWatch *timer)
 
     timer->pause_time = std::chrono::high_resolution_clock::now();
 
-    res.result.milliseconds =  (float)std::chrono::duration_cast<std::chrono::milliseconds>(timer->pause_time - timer->start_time).count();
     res.result.microseconds = (float)std::chrono::duration_cast<std::chrono::microseconds>(timer->pause_time - timer->start_time).count();
+    res.result.milliseconds =  res.result.microseconds/1000.f;
     res.result.seconds = res.result.milliseconds/1000.f;
     res.result.minutes = res.result.seconds/60.f;
     res.result.hours = res.result.minutes/60.f;
@@ -59,25 +59,6 @@ lunar::Lresult<void*> __cdecl lunar::ResetStopwatch(StopWatch *timer)
 bool __cdecl lunar::CompareFlags(uint32_t lflag, uint32_t lcompare)
 {
     return (lflag & lcompare) == lcompare;
-}
-
-void __cdecl lunar::QueuePushback(Lambda_vec *functionqueue, Lambda_func functions)
-{
-    functionqueue->push_back(functions);
-}
-void __cdecl lunar::RqueueUse(Lambda_vec functionqueue)
-{
-    for (auto i = functionqueue.rbegin(); i != functionqueue.rend(); ++i)
-    {
-        (*i)();
-    }
-}
-void __cdecl lunar::QueueUse(Lambda_vec functionqueue)
-{
-    for (auto i = functionqueue.begin(); i != functionqueue.end(); ++i)
-    {
-        (*i)();
-    }
 }
 
 bool __cdecl lunar::DoesFileExist(string path)

@@ -12,8 +12,25 @@
     #pragma clang diagnostic ignored "-Wunused-result"
 #endif
 
+#define lunar_log(fmt, args...) {                                 \
+    string newFmt="[%s:%i] "; newFmt+=fmt;                        \
+    newFmt=string_format (newFmt , __FILE__, __LINE__, args );    \
+    std::cout << newFmt;                             \
+    lunar::AppendFile("log.txt", newFmt);                         \
+}
 #include "Lunar-defs.h"
-using std::string; using std::vector; using std::function;
+using std::string; using std::vector; using std::function; using std::array;
+
+template<typename ... Args>
+std::string string_format( const std::string& format, Args ... args )
+{
+    int size_s = std::snprintf( nullptr, 0, format.c_str(), args ... ) + 1; // Extra space for '\0'
+    if( size_s <= 0 ){ throw std::runtime_error( "Error during formatting." ); }
+    auto size = static_cast<size_t>( size_s );
+    auto buf = std::make_unique<char[]>( size );
+    std::snprintf( buf.get(), size, format.c_str(), args ... );
+    return std::string( buf.get(), buf.get() + size - 1 ); // We don't want the '\0' inside
+}
 
 namespace lunar
 {
@@ -86,8 +103,10 @@ namespace lunar
         Uint32 error_code = LUNAR_ERROR_SUCCESS;
     };
 
-    typedef std::vector<std::function<void()>> Lambda_vec;
-    typedef std::function<void()> Lambda_func;
+    template<class T>
+    using Lambda_vec = std::vector<std::function<T()>>;
+    template<class T>
+    using Lambda_func = std::function<T()>;
 
     typedef std::chrono::steady_clock::time_point SteadyTimePoint;
     struct times
@@ -208,7 +227,7 @@ namespace lunar
         cmd_obj *cmd;
     };
 
-    struct instance
+    /*struct instance
     {
         VkInstance vk_instance;
         vkb::Instance vkb_instance;
@@ -245,7 +264,7 @@ namespace lunar
         #ifndef LUNAR_NO_DEBUG
         VkDebugUtilsMessengerEXT debug_messenger;
         #endif
-    };
+    };*/
 
     float get_time_since_start(uint32_t lformat = LUNAR_TIME_MILLISECONDS);
     void WaitMS(uint32_t milliseconds);
@@ -257,10 +276,27 @@ namespace lunar
 
     bool __cdecl CompareFlags(Uint32 lflag_first, Uint32 lflag_second);
 
-    void __cdecl QueuePushback(Lambda_vec *functionqueue, Lambda_func functions);
-    void __cdecl RqueueUse(Lambda_vec functionqueue);
-    void __cdecl QueueUse(Lambda_vec functionqueue);
-
+    template<class T>
+    void __cdecl QueuePushback(Lambda_vec<T> *functionqueue, Lambda_func<T> functions)
+    {
+        functionqueue->push_back(functions);
+    }
+    template<class T>
+    void __cdecl RqueueUse(Lambda_vec<T> functionqueue)
+    {
+        for (auto i = functionqueue.rbegin(); i != functionqueue.rend(); ++i)
+        {
+            (*i)();
+        }
+    }
+    template<class T>
+    void __cdecl QueueUse(Lambda_vec<T> functionqueue)
+    {
+        for (auto i = functionqueue.begin(); i != functionqueue.end(); ++i)
+        {
+            (*i)();
+        }
+    }
 
     Lresult<string> __cdecl ReadFile(string path);
 
