@@ -11,32 +11,19 @@ LunarGE (Game engine / Graphics Engine) is an in-development light-ish weight en
 
 ## Structure
 
-*The structure of LunarGE has *possibly* reached its final form, and it goes like this:*
+****(IN PROGRESS)***The structure of LunarGE has *not* reached its final form, I lied:*
 
-**Lunar Instance**
+**Lunarge Instance**
 - Vulkan instance
 - Vulkan Debug messanger
 - Vulkan Command pool
-- And other global contexts
+- Vulkan swapchain
+- Vulkan Device & Physical Device
 
-**-> Lunar Scene**
-- Scenes represent physical window contexts
-- These run independently from each other
-- These Operate their own Event polling and Scene scripts
-- Scenes will also have their own command queues
-- Vulkan Physical device
-- Vulkan Device
+**Global scripts**
 
-**--> Scene scripts**
-- These operate in the context of their parent scene, and can be accessed by anything lower than them, this also includes shader scripts
-- This can be considered the runtime scripts, that operate the child Scene objects/Scene object scripts
 
-**---> Scene object**
-- These are anything that gets represented via the parent scene, be it a UI element, pictures, 3D model, or even audio
 
-**----> Scene object scripts**
-- These do not parent the object, but are parented by the object they belong to
-- These scripts can access parent scene scripts, the parent scene, and the instance
 
 
 ## Code Examples
@@ -46,6 +33,7 @@ LunarGE (Game engine / Graphics Engine) is an in-development light-ish weight en
 ```
 
 ## Libraries and API's
+![Vulkan](docs/Vulkan_500px_Dec16.png)
 - [Vulkan 1.3](https://www.vulkan.org/)
 - [SDL2](https://www.libsdl.org/)
 - [VMA *Vulkan Memory Allocator*](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)

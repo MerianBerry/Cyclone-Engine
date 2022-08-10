@@ -15,7 +15,7 @@
 #define lunar_log(fmt, args...) {                                 \
     string newFmt="[%s:%i] "; newFmt+=fmt;                        \
     newFmt=string_format (newFmt , __FILE__, __LINE__, args );    \
-    std::cout << newFmt;                             \
+    std::cout << newFmt;                                          \
     lunar::AppendFile("log.txt", newFmt);                         \
 }
 #include "Lunar-defs.h"

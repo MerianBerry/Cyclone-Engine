@@ -17,7 +17,7 @@ int main()
     lunar::WriteFile("log.txt");
 
 	auto sys_start_time = std::chrono::system_clock::to_time_t( std::chrono::system_clock::now() );
-    lunar_log( "Lunarge initiated at %s\n", std::ctime( &sys_start_time ) );
+    lunar_log( "Lunarge initiated at %s\n", std::ctime( &sys_start_time ) )
 
     lunar::StopWatch stopwatch;
     lunar::StartStopwatch(&stopwatch);
@@ -27,7 +27,7 @@ int main()
         lunar_log( "SDL error: SDL failed to initilise :(\n" )
         labort();
     }
-    lunar_log( "SDL initiated in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds );
+    lunar_log( "SDL initiated in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds )
     lunar::ResetStopwatch( &stopwatch );
 
     vkb::InstanceBuilder inst_builder;
@@ -49,7 +49,7 @@ int main()
         lunar_log( "Destroyed vulkan (vkb) instance :)\n" )
     });
     
-    lunar_log("Vulkan instance initiated in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
+    lunar_log("Vulkan instance initiated in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds)
     lunar::ResetStopwatch(&stopwatch);
 
     vector<string> config = lunar::GetLines("config.txt").result;
@@ -139,7 +139,7 @@ int main()
         lunar_log( "Destroyed vulkan (vkb) device :)\n" )
     });
     
-    lunar_log( "Beggining runtime\n\n" )
+    lunar_log( "Beggining runtime, init sequence took %0.1fms\n\n", lunar::CheckStopwatch(starting_time).result.milliseconds )
     //================================RUNTIME====================================
     SDL_Event e;
     Uint32 runtime_status = LUNAR_STATUS_IDLE;
