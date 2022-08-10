@@ -11,7 +11,7 @@ LunarGE (Game engine / Graphics Engine) is an in-development light-ish weight en
 
 ## Structure
 
-****(IN PROGRESS)***The structure of LunarGE has *not* reached its final form, I lied:*
+*(IN PROGRESS)*The structure of LunarGE has *not* reached its final form, I lied:
 
 **Lunarge Instance**
 - Vulkan instance
@@ -33,7 +33,7 @@ LunarGE (Game engine / Graphics Engine) is an in-development light-ish weight en
 ```
 
 ## Libraries and API's
-![Vulkan](docs/Vulkan_500px_Dec16.png)
+![Vulkan](docs/Vulkan_100px_Dec16.png)
 - [Vulkan 1.3](https://www.vulkan.org/)
 - [SDL2](https://www.libsdl.org/)
 - [VMA *Vulkan Memory Allocator*](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
