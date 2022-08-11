@@ -11,7 +11,7 @@ LunarGE (Game engine / Graphics Engine) is an in-development light-ish weight en
 
 ## Structure
 
-*(IN PROGRESS)*The structure of LunarGE has *not* reached its final form, I lied:
+*(IN PROGRESS)* The structure of LunarGE has *not* reached its final form, I lied:
 
 **Lunarge Instance**
 - Vulkan instance

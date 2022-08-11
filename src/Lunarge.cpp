@@ -71,7 +71,7 @@ lunar::Lresult<string> __cdecl lunar::ReadFile(string path)
     if (!DoesFileExist(path))
     {
         res.error_code = LUNAR_ERROR_FILE_DOESNT_EXIST;
-        res.message + "Path: " + path + " does not exist";
+        res.message = "Path: " + path + " does not exist";
         return res;
     }
     //opens an in file stream operation using the 'path' string
@@ -103,7 +103,7 @@ lunar::Lresult<void*> __cdecl lunar::AppendFile(string path, string addition)
     if (!DoesFileExist(path))
     {
         res.error_code = LUNAR_ERROR_FILE_DOESNT_EXIST;
-        res.message + "Path: " + path + " does not exist";
+        res.message = "Path: " + path + " does not exist";
         return res;
     }
     std::ofstream outfile;
@@ -126,7 +126,7 @@ lunar::Lresult<vector<string>> __cdecl lunar::GetFiles(string path, string exten
     if (!DoesFileExist(path))
     {
         result.error_code = LUNAR_ERROR_FILE_DOESNT_EXIST;
-        result.message + "Path: " + path + " does not exist";
+        result.message = "Path: " + path + " does not exist";
         return result;
     }
     for (const auto& file : directory_iterator(path)) {
@@ -149,7 +149,7 @@ lunar::Lresult<vector<string>> __cdecl lunar::GetLines(string path)
     if (!DoesFileExist(path))
     {
         result.error_code = LUNAR_ERROR_FILE_DOESNT_EXIST;
-        result.message + "Path: " + path + " does not exist";
+        result.message = "Path: " + path + " does not exist";
         return result;
     }
     std::ifstream input(path);

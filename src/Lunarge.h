@@ -9,14 +9,17 @@
     #pragma clang diagnostic ignored "-Wnullability-completeness"
     #pragma clang diagnostic ignored "-Wstring-plus-int"
     #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    #pragma clang diagnostic ignored "-Wunused-result"
+    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    //#pragma clang diagnostic ignored "-W#pragma-messages"
 #endif
 
-#define lunar_log(fmt, args...) {                                 \
-    string newFmt="[%s:%i] "; newFmt+=fmt;                        \
-    newFmt=string_format (newFmt , __FILE__, __LINE__, args );    \
-    std::cout << newFmt;                                          \
-    lunar::AppendFile("log.txt", newFmt);                         \
+#define lunar_log(fmt, args...) {                                                                       \
+    string newFmt="[%s:%s:%i] "; newFmt+=fmt;                                                           \
+    string file = __FILE__;                                                                             \
+    if ( file.find_first_of('/') != string::npos ) file = file.substr( file.find_last_of('/') + 1 );    \
+    newFmt=string_format (newFmt , file.c_str(), __func__, __LINE__, args );                            \
+    std::cout << newFmt;                                                                                \
+    lunar::AppendFile("log.txt", newFmt);                                                               \
 }
 #include "Lunar-defs.h"
 using std::string; using std::vector; using std::function; using std::array;
@@ -181,15 +184,15 @@ namespace lunar
 
     struct swapchain
     {
-        VkPresentModeKHR vk_presentmode;
+        VkPresentModeKHR presentmode;
 
-        VkSwapchainKHR vk_swapchain;
+        VkSwapchainKHR swapchain;
 
-        VkFormat vk_swapchain_image_format;
+        VkFormat image_format;
 
-        std::vector<VkImage> vk_swapchain_images;
+        std::vector<VkImage> images;
 
-        std::vector<VkImageView> vk_swapchain_image_views;
+        std::vector<VkImageView> image_views;
     };
 
     struct Window
@@ -220,11 +223,12 @@ namespace lunar
         VkPipelineBindPoint pipeline_bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS;
     };
 
-    struct FrameData {
+    struct frameData {
         VkSemaphore present_semaphore, render_semaphore;
         VkFence render_fence;
 
-        cmd_obj *cmd;
+        VkCommandPool cmdPool;
+        VkCommandBuffer *cmdBuf;
     };
 
     /*struct instance
