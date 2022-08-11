@@ -16,7 +16,14 @@
 lunar::Lambda_vec<void> MasterDeletionQueue;
 lunar::Lambda_vec<void> SwapchainDeletionQueue;
 
-constexpr Uint8 FRAME_OVERLAY = 2;
+constexpr Uint32 FRAME_WAIT = std::numeric_limits<Uint32>::max();
+constexpr Uint8 FRAME_OVERLAP = 2;
+Uint64 FRAME_NUMBER = 0;
+
+Uint8 GET_FRAME()
+{
+    return FRAME_NUMBER % 2;
+}
 
 void labort()
 {
@@ -71,11 +78,13 @@ int main()
     lunar::Window mainwindow;
     mainwindow.size.width = stoi(config[0]);
     mainwindow.size.height = stoi(config[1]);
-    mainwindow.title = config[2].c_str();
+    mainwindow.pos.x = stoi( config[2] ) == 0 ? SDL_WINDOWPOS_CENTERED : stoi( config[2] );
+    mainwindow.pos.y = stoi( config[3] ) == 0 ? SDL_WINDOWPOS_CENTERED : stoi( config[3] );
+    mainwindow.title = config[4].c_str();
     
     mainwindow.sdl_handle = SDL_CreateWindow(mainwindow.title,
-    SDL_WINDOWPOS_CENTERED,
-    SDL_WINDOWPOS_CENTERED,
+    mainwindow.pos.x,
+    mainwindow.pos.y,
     mainwindow.size.width,
     mainwindow.size.height,
     SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
@@ -118,8 +127,7 @@ int main()
     VkRenderPass renderPass;
     vector<VkFramebuffer> frameBufs;
 
-    std::function<void(VkRenderPass, vector<VkFramebuffer>*, lunar::swapchain*, lunar::Window*, vkb::Swapchain*)> swipychain([=](VkRenderPass rdpass, vector<VkFramebuffer> *fmrbufs, lunar::swapchain *swapchain, lunar::Window *window, vkb::Swapchain* swph){
-        
+    std::function<void(VkRenderPass*, vector<VkFramebuffer>*, lunar::swapchain*, lunar::Window*, vkb::Swapchain*)> swipychain([=](VkRenderPass *rdpass, vector<VkFramebuffer> *fmrbufs, lunar::swapchain *swapchain, lunar::Window *window, vkb::Swapchain* swph){
         vkb::SwapchainBuilder vkswapchain_builder{ phys_device, vkbDevice.device, window->surface };
         
         auto tmpswapchain = vkswapchain_builder
@@ -131,9 +139,6 @@ int main()
         .set_desired_extent(window->size.width, window->size.height)
         .build()
         .value();
-
-       
-
         
 
         *swph = tmpswapchain;
@@ -226,9 +231,9 @@ int main()
         renderPassInfo.pDependencies = &dependency;
         renderPassInfo.flags = 0;
 
-        VK_CHECK(vkCreateRenderPass(vkbDevice.device, &renderPassInfo, nullptr, &rdpass));
+        VK_CHECK(vkCreateRenderPass(vkbDevice.device, &renderPassInfo, nullptr, rdpass));
         SwapchainDeletionQueue.push_back([=](){
-            vkDestroyRenderPass(vkbDevice.device, rdpass, nullptr);
+            vkDestroyRenderPass(vkbDevice.device, *rdpass, nullptr);
         });
 
         VkFramebufferCreateInfo frameBufInfo;
@@ -238,7 +243,7 @@ int main()
         frameBufInfo.layers = 1U;
         frameBufInfo.width = window->size.width;
         frameBufInfo.height = window->size.height;
-        frameBufInfo.renderPass = rdpass;
+        frameBufInfo.renderPass = *rdpass;
         frameBufInfo.flags = 0;
         
 
@@ -258,27 +263,56 @@ int main()
             });
         }
     });
-    (swipychain)(renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
+
+    std::function<void(vector<lunar::frameData>)> waitAllFences([=](vector<lunar::frameData> Frames)
+    {
+        VkFence allfences[FRAME_OVERLAP];
+        for( int i = 0; i < FRAME_OVERLAP; ++i )
+        {
+            allfences[i] = Frames[i].render_fence;
+        }
+        VK_CHECK(vkWaitForFences( vkbDevice.device, FRAME_OVERLAP, allfences, true, FRAME_WAIT ));
+    });
+    swipychain(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
+
+    
 
     lunar_log( "Swapchain created in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds )
     lunar::ResetStopwatch(&stopwatch);
 
-    lunar::frameData frames;
+    vector<lunar::frameData> frames ( FRAME_OVERLAP );
     
-    VkSemaphoreCreateInfo render_semaphore_info = vkinit::semaphore_create_info();
-    VkSemaphoreCreateInfo present_semaphore_info = vkinit::semaphore_create_info();
+    VkSemaphoreCreateInfo renderSemaphoreInfo = vkinit::semaphore_create_info();
+    VkSemaphoreCreateInfo presentSemaphoreInfo = vkinit::semaphore_create_info();
 
     VkFenceCreateInfo fenceInfo = vkinit::fence_create_info( VK_FENCE_CREATE_SIGNALED_BIT );
-    //vkinit::command
-
     VkCommandPoolCreateInfo cmdPoolInfo = vkinit::command_pool_create_info( (Uint32)LUNAR_QUEUETYPE_GRAPHICS, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT );
 
-    MasterDeletionQueue.push_back(
-    [=]()
+    for ( int i = 0; i < frames.size(); ++i )
     {
-        SDL_DestroyWindow(mainwindow.sdl_handle);
-        vkDestroySurfaceKHR(vkb_inst.instance, mainwindow.surface, nullptr);
-        vkb::destroy_device(vkbDevice);
+        VK_CHECK(vkCreateCommandPool( vkbDevice.device, &cmdPoolInfo, nullptr, &frames[i].cmdPool ));
+        auto cmdAllocInfo = vkinit::command_buffer_allocate_info( frames[i].cmdPool );
+        VK_CHECK(vkAllocateCommandBuffers( vkbDevice.device, &cmdAllocInfo, &frames[i].cmdBuf ));
+
+        VK_CHECK(vkCreateSemaphore( vkbDevice.device, &renderSemaphoreInfo, nullptr, &frames[i].render_semaphore ));
+        VK_CHECK(vkCreateSemaphore( vkbDevice.device, &presentSemaphoreInfo, nullptr, &frames[i].present_semaphore ));
+        VK_CHECK(vkCreateFence( vkbDevice.device, &fenceInfo, nullptr, &frames[i].render_fence ));
+    }
+
+    MasterDeletionQueue.push_back([=]()
+    {
+        for( auto o : frames )
+        {
+            vkDestroyFence( vkbDevice.device, o.render_fence, nullptr );
+            vkDestroySemaphore( vkbDevice.device, o.render_semaphore, nullptr );
+            vkDestroySemaphore( vkbDevice.device, o.present_semaphore, nullptr );
+
+            vkDestroyCommandPool( vkbDevice.device, o.cmdPool, nullptr );
+        }
+
+        SDL_DestroyWindow( mainwindow.sdl_handle );
+        vkDestroySurfaceKHR( vkb_inst.instance, mainwindow.surface, nullptr );
+        vkb::destroy_device( vkbDevice );
         //lunar_log( "Destroyed vulkan (vkb) device :)\n" )
     });
     
@@ -289,8 +323,8 @@ int main()
     Uint32 runtime_status = LUNAR_STATUS_IDLE;
     while (!lunar::CompareFlags(runtime_status, LUNAR_STATUS_QUIT))
     {
-        lunar::StopWatch frame_delta;
-        lunar::StartStopwatch(&frame_delta);
+        lunar::StopWatch frameDelta;
+        lunar::StartStopwatch(&frameDelta);
         while(SDL_PollEvent(&e) != 0)
         {
             if (e.type == SDL_QUIT)
@@ -306,23 +340,117 @@ int main()
             }
             switch( e.window.event )
             {
+                case SDL_WINDOWEVENT_MINIMIZED:
+                    //lunar_log( "Window minimized\n" );
+                    while ( lunar::CompareFlags( SDL_GetWindowFlags( mainwindow.sdl_handle ), SDL_WINDOW_MINIMIZED ))
+                    {
+                        SDL_PollEvent( &e );
+                        lunar::WaitMS( 5 );
+                    }
+                break;
                 case SDL_WINDOWEVENT_RESIZED:
                     lunar::StopWatch swpchainrecreation;
                     lunar::StartStopwatch( &swpchainrecreation );
+                    waitAllFences( frames );
                     mainwindow.size.width = e.window.data1;
                     mainwindow.size.height = e.window.data2;
                     lunar::RqueueUse(SwapchainDeletionQueue);
                     SwapchainDeletionQueue.clear();
-                    (swipychain)(renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
+                    (swipychain)(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
                     //lunar_log("uhhh %lu\n", vkbSwapchain.get_image_views().value().size())
                     //lunar_log("uhhh %lu\n", swpchain.image_views.size())
                     //lunar_log("uhhh %lu\n", SwapchainDeletionQueue.size())
-                    lunar_log("Swapchain re-created in %0.1fms! | w: %lu, h: %lu\n", lunar::CheckStopwatch( swpchainrecreation ).result.milliseconds, e.window.data1, e.window.data2)
-                break;
+                    //lunar_log("Swapchain re-created in %0.1fms! | w: %lu, h: %lu\n", lunar::CheckStopwatch( swpchainrecreation ).result.milliseconds, e.window.data1, e.window.data2)
             }
         }
         //lunar::CheckStopwatch(frame_delta).result.milliseconds;
+
+        #if 1
+        //Frame data of the current frame
+        
+
+        auto curFrame = &frames[GET_FRAME()];
+        //Wait for the fences so we stay synced with the GPU, then reset the fence so it can be used again
+        VK_CHECK(vkWaitForFences( vkbDevice.device, 1, &curFrame->render_fence, true, FRAME_WAIT ));
+        VK_CHECK(vkResetFences( vkbDevice.device, 1, &curFrame->render_fence ));
+
+        //Get the index of the swapchain thing that we are in, then (i think) signal the present semaphore of our current frame
+        Uint32 swpchainIndex = 0U;
+        VK_CHECK(vkAcquireNextImageKHR( vkbDevice.device, swpchain.swapchain, FRAME_WAIT, curFrame->present_semaphore, nullptr, &swpchainIndex ));
+
+        //Because we KNOW that our command buffer is no longer in use, we will reset it
+        VK_CHECK(vkResetCommandBuffer( curFrame->cmdBuf, NULL ));
+
+        //A variable with our current frame command buffer. Just for ease of use
+        auto cmd = curFrame->cmdBuf;
+
+        //Lets get our command buffer all lubed up. the cmd buffer will only be submitted once, at the end of the frame, so lets tell vulkan that
+        auto cmdBeginInfo = vkinit::command_buffer_begin_info( VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT );
+        VK_CHECK(vkBeginCommandBuffer( cmd, &cmdBeginInfo ));
+
+        VkClearValue clearColor;
+        clearColor.color = { { .1f, .1f, .1f, 1.f } };
+
+
+        //Now its time to stretch out the render pass for use, lets give it our current frame buffer using the swapchain image index
+        
+        auto rpBeginInfo = vkinit::renderpass_begin_info( renderPass, mainwindow.size, frameBufs[swpchainIndex] );
+        //lets set our clear value
+        rpBeginInfo.pClearValues = &clearColor;
+        
+
+        //Lets get this show on the road by attributing our renderpass to the command buffer. idk what the whole subpass stuff means
+        vkCmdBeginRenderPass( cmd, &rpBeginInfo, VK_SUBPASS_CONTENTS_INLINE );
+
+        //Now that weve given the renderpass to the cmd buffer we can now begin giving commands!
+        //=====================================RENDERPASS STARTS HERE IDIOT========================================
+
+        
+
+        //======================================RENDERPASS ENDS HERE IDIOT=========================================
+        vkCmdEndRenderPass( cmd );
+
+        //Now that we are done with the command buffer, its time to finish
+        VK_CHECK(vkEndCommandBuffer( cmd ));
+        
+        //Yay command submittion queue time!
+        //We want the commands to wait for the present semaphore to finish up, then signal the render semaphore to become active
+        auto submitInfo = vkinit::submit_info( &cmd );
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = &curFrame->present_semaphore;
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = &curFrame->render_semaphore;
+
+        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        submitInfo.pWaitDstStageMask = &waitStage;
+
+        //We now have our submit info, so lets submit our command buffer to the queue and execute it, it will then block the render semaphore, sexy
+        VkQueue Queue = vkbDevice.get_queue((vkb::QueueType)LUNAR_QUEUETYPE_GRAPHICS).value();
+
+        VK_CHECK(vkQueueSubmit( Queue, 1, &submitInfo, curFrame->render_fence ));
+        //lunar_log("uhhh %p\n", renderPass)
+
+        //Lets present this bitch, we have our rendered stuff, so we can now present it to the swapchain, hope it likes it...
+        VkPresentInfoKHR presentInfo = vkinit::present_info();
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = &swpchain.swapchain;
+
+        //We want it to wait for the render semaphore
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = &curFrame->render_semaphore;
+
+        //We also want to give it the image index of the swapchain that we are using
+        presentInfo.pImageIndices = &swpchainIndex;
+
+        //Lets finally present our image! Show them what a gaping hole we left~ lmao
+        VK_CHECK(vkQueuePresentKHR( Queue, &presentInfo ));
+
+        lunar::CheckStopwatch(frameDelta).result.milliseconds;
+
+        ++FRAME_NUMBER;
+        #else
         lunar::WaitMS(17);
+        #endif
     }
     
 
@@ -337,14 +465,25 @@ int main()
     
     lunar_log( "Lunarge is shutting down... code = %lu\n", runtime_status )
     lunar_log( "Runtime duration was %0.2f minutes\n", lunar::CheckStopwatch(stopwatch).result.minutes )
+
+    waitAllFences( frames );
     
-    lunar::RqueueUse(SwapchainDeletionQueue);
-    vkDestroySwapchainKHR(vkbDevice.device, swpchain.swapchain, nullptr);
-    lunar::RqueueUse(MasterDeletionQueue);
+    lunar::RqueueUse( SwapchainDeletionQueue );
+    vkDestroySwapchainKHR( vkbDevice.device, swpchain.swapchain, nullptr );
+
+    int w, h;
+    SDL_GetWindowSize( mainwindow.sdl_handle, &w, &h );
+    string wh = string_format( "%i\n%i\n", w, h );
+
+    SDL_GetWindowPosition( mainwindow.sdl_handle, &w, &h );
+    wh += string_format( "%i\n%i\n%s", w, h, config[4].c_str() );
+    lunar::WriteFile( "config.txt", wh );
+    
+    lunar::RqueueUse( MasterDeletionQueue );
     
     SDL_Quit();
 
     string ending;
-    std::getline(std::cin, ending);
+    std::getline( std::cin, ending );
     return EXIT_SUCCESS;
 }

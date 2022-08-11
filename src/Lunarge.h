@@ -37,9 +37,6 @@ std::string string_format( const std::string& format, Args ... args )
 
 namespace lunar
 {
-    template<typename T>
-    using Lambda = std::function<void(T)>;
-
     template<typename T, typename D>
     struct generictype
     {
@@ -109,7 +106,7 @@ namespace lunar
     template<class T>
     using Lambda_vec = std::vector<std::function<T()>>;
     template<class T>
-    using Lambda_func = std::function<T()>;
+    using Lambda = std::function<T()>;
 
     typedef std::chrono::steady_clock::time_point SteadyTimePoint;
     struct times
@@ -228,7 +225,7 @@ namespace lunar
         VkFence render_fence;
 
         VkCommandPool cmdPool;
-        VkCommandBuffer *cmdBuf;
+        VkCommandBuffer cmdBuf;
     };
 
     /*struct instance
@@ -281,7 +278,7 @@ namespace lunar
     bool __cdecl CompareFlags(Uint32 lflag_first, Uint32 lflag_second);
 
     template<class T>
-    void __cdecl QueuePushback(Lambda_vec<T> *functionqueue, Lambda_func<T> functions)
+    void __cdecl QueuePushback(Lambda_vec<T> *functionqueue, Lambda<T> functions)
     {
         functionqueue->push_back(functions);
     }
