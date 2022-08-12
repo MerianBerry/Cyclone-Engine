@@ -1,6 +1,8 @@
 # What is Lunar?
 LunarGE (Game engine / Graphics Engine) is an in-development light-ish weight engine written in c++, and uses the Vulkan graphics api. *Planned* supported scripting languages are c++, lua, and python.
 
+### *NOTE: this readme is in progress, as things arent set in stone yet*
+
 [Heres](docs/documentation.md) the documentation (not close to being worked on)
 
 ### *Contents*
