@@ -16,6 +16,8 @@
 lunar::Lambda_vec<void> MasterDeletionQueue;
 lunar::Lambda_vec<void> SwapchainDeletionQueue;
 
+using lunar::Lambda;
+
 constexpr Uint32 FRAME_WAIT = std::numeric_limits<Uint32>::max();
 constexpr Uint8 FRAME_OVERLAP = 2;
 Uint64 FRAME_NUMBER = 0;

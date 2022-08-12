@@ -37,64 +37,6 @@ std::string string_format( const std::string& format, Args ... args )
 
 namespace lunar
 {
-    template<typename T, typename D>
-    struct generictype
-    {
-        T data;
-        std::function<void()> deleter;
-        generictype (T t, D d)
-        {
-            data = t;
-            deleter = d;
-        }
-        operator T() const noexcept
-        {
-            return data;
-        }
-        T operator +(T t)
-        {
-            return data + t;
-        }
-        T operator +=(T t)
-        {
-            return (data+=t, data);
-        }
-        T operator -(T t)
-        {
-            return data - t;
-        }
-        T operator -=(T t)
-        {
-            return (data-=t, data);
-        }
-        T operator *(T t)
-        {
-            return data * t;
-        }
-        T operator *=(T t)
-        {
-            return (data*=t, data);
-        }
-        T operator /(T t)
-        {
-            return data / t;
-        }
-        T operator /=(T t)
-        {
-            return (data/=t, data);
-        }
-        void operator =(T t)
-        {
-            data = t;
-        }
-        ~generictype() noexcept
-        {
-            (deleter)();
-        }
-    };
-    template<typename T, typename D>
-    using Dtype = generictype<T, std::function<void()>>;
-
     template<typename T>
     struct Lresult
     {
@@ -107,6 +49,27 @@ namespace lunar
     using Lambda_vec = std::vector<std::function<T()>>;
     template< typename T, typename ..._Types >
     using Lambda = std::function< T(_Types ...) >;
+
+    template< typename T >
+    struct Dtype
+    {
+        T x;
+        Dtype( T _t, Lambda< void > _func )
+        {
+            x = _t;
+            deleter = _func;
+        }
+        const void callFunc()
+        {
+            (deleter)();
+        }
+        ~Dtype()
+        {
+            (deleter)();
+        }
+        private:
+        Lambda< void > deleter;
+    };
 
     typedef std::chrono::steady_clock::time_point SteadyTimePoint;
     struct times
