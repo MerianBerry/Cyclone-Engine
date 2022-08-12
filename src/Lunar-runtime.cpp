@@ -35,6 +35,7 @@ int main()
 {
     lunar::StopWatch starting_time;
     lunar::StartStopwatch( &starting_time );
+    Uint32 runtime_status = LUNAR_STATUS_IDLE;
 
     lunar::WriteFile("log.txt");
 
@@ -76,6 +77,11 @@ int main()
 
     vector<string> config = lunar::GetLines("config.txt").result;
     lunar::Window mainwindow;
+    if( config.size() == 0 )
+    {
+        lunar::WriteFile( "config.txt", string_format("%i\n%i\n%i\n%i\nLunarge", 960, 540, 0, 0) );
+        config = lunar::GetLines("config.txt").result;
+    }
     mainwindow.size.width = stoi(config[0]);
     mainwindow.size.height = stoi(config[1]);
     mainwindow.pos.x = stoi( config[2] ) == 0 ? SDL_WINDOWPOS_CENTERED : stoi( config[2] );
@@ -116,7 +122,6 @@ int main()
     
     lunar_log("Device has been selected in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
     lunar::ResetStopwatch(&stopwatch);
-
     
 
     //=============================MF SWAPCHAIN==================================
@@ -275,7 +280,6 @@ int main()
     });
     swipychain(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
 
-    
 
     lunar_log( "Swapchain created in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds )
     lunar::ResetStopwatch(&stopwatch);
@@ -315,12 +319,137 @@ int main()
         vkb::destroy_device( vkbDevice );
         //lunar_log( "Destroyed vulkan (vkb) device :)\n" )
     });
+
+    //Its about time to load those sexy shaders
+    vector<string> shadersToLoad = { "basicVert.spv", "basicFrag.spv" };
+    vector<VkShaderModule> shadersLoaded;
+
+    //omg a pipeline *flush*
+    VkPipelineLayout trianglePipelineLayout;
+    VkPipeline trianglePipeline;
+
+    runtime_status |= LUNAR_STATUS_SHADERLOAD;
+    for( auto o : shadersToLoad )
+    {
+        string nO = "shaders/" + o;
+        if( !lunar::DoesFileExist( nO ) )
+        {
+            lunar_log( "uh oh! shader %s doesnt exist\n", nO.c_str() )
+            runtime_status |= LUNAR_STATUS_QUIT;
+            break;
+        }
+        //lets get this bread i mean file, we want to load it with the cursor at the end and in binary
+        std::ifstream file( nO.c_str(), std::ios::ate | std::ios::binary );
+        if( !file.is_open() )
+        {
+            lunar_log( "uh oh! shader %s failed to load\n", nO.c_str() )
+            runtime_status |= LUNAR_STATUS_QUIT;
+            break;
+        }
+
+        //because we set the cursor at the end, we can get the size if the entire file
+        size_t fileSize = (size_t)file.tellg();
+
+        //why does vulkan expect the spirv code to be in Uint32? idk, but lets give it an array large enough
+        Uint32 buffer[fileSize / sizeof(Uint32)];
+
+        //set the cursor at the beginning for whatever reason
+        file.seekg( 0 );
+
+        //lets load this bitch!
+        file.read( (char*)buffer, fileSize );
+
+        //were done with the file, so we can unload it
+        file.close();
+
+        auto moduleCreateInfo = vkinit::shader_module_create_info( );
+
+        moduleCreateInfo.pCode = buffer;
+        moduleCreateInfo.codeSize = fileSize;
+
+        VkShaderModule Module;
+        VK_CHECK(vkCreateShaderModule( vkbDevice.device, &moduleCreateInfo, nullptr, &Module ));
+        shadersLoaded.push_back( Module );
+        //lunar_log( "our good friend %p\n", Module );
+
+        MasterDeletionQueue.push_back([=]()
+        {
+            vkDestroyShaderModule( vkbDevice.device, Module, nullptr );
+        });
+    }
+    runtime_status &= LUNAR_STATUS_SHADERLOAD;
+    lunar_log("Shader modules created in %0.1fms\n", lunar::CheckStopwatch( stopwatch ).result.milliseconds)
+    lunar::ResetStopwatch( &stopwatch );
+    
+    lunar::Lambda< void, vector<VkShaderModule>, VkPipelineLayout*, VkPipeline* > createPipelines( [&]( vector<VkShaderModule> shaders, VkPipelineLayout* pipelineLayout, VkPipeline *pipeline )
+    {
+        //first, as per the standard, lets get the pipeline layout ready for use
+        auto pipelineLayoutInfo = vkinit::pipeline_layout_create_info();
+        VK_CHECK(vkCreatePipelineLayout( vkbDevice.device, &pipelineLayoutInfo, nullptr, pipelineLayout ));
+
+        //Im getting turned on already! lets put those throbing shader modules to use~
+        auto basicVert = shadersLoaded[0];
+        auto basicFrag = shadersLoaded[1];
+
+        //lets build this cock! (what am i even saying)
+        lunar::PipelineBuilder PipelineBuilder;
+
+        //we need to give our pipeline our shaders to work, obviously
+        PipelineBuilder._shaderStages.push_back(
+            vkinit::pipeline_shader_stage_create_info( VK_SHADER_STAGE_VERTEX_BIT, basicVert )
+        );
+        PipelineBuilder._shaderStages.push_back(
+            vkinit::pipeline_shader_stage_create_info( VK_SHADER_STAGE_FRAGMENT_BIT, basicFrag )
+        );
+
+        PipelineBuilder._vertexInputInfo = vkinit::vertex_input_state_create_info();
+
+        //lets set its girthyness
+        PipelineBuilder._viewport.x = 0.0f;
+        PipelineBuilder._viewport.y = 0.0f;
+        PipelineBuilder._viewport.width = (float)mainwindow.size.width;
+        PipelineBuilder._viewport.height = (float)mainwindow.size.height;
+        PipelineBuilder._viewport.minDepth = 0.0f;
+        PipelineBuilder._viewport.maxDepth = 1.0f;
+
+        PipelineBuilder._scissor.offset = { 0, 0 };
+        PipelineBuilder._scissor.extent = mainwindow.size;
+
+        //input assembly is the configuration for drawing triangle lists, strips, or individual points.
+	    //we are just going to draw triangle list
+        PipelineBuilder._inputAssembly = vkinit::input_assembly_create_info( VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST );
+
+        //configure the rasterizer to draw filled triangles
+        PipelineBuilder._rasterizer = vkinit::rasterization_state_create_info(VK_POLYGON_MODE_FILL);
+
+        //we don't use multisampling, so just run the default one
+        PipelineBuilder._multisampling = vkinit::multisampling_state_create_info();
+
+        //a single blend attachment with no blending and writing to RGBA
+        PipelineBuilder._colorBlendAttachment = vkinit::color_blend_attachment_state();
+
+        //default depthtesting
+        //PipelineBuilder._depthStencil = vkinit::depth_stencil_create_info(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
+
+        //now, we finally give the pipeline our layout. then we build it
+        PipelineBuilder._pipelineLayout = trianglePipelineLayout;
+        *pipeline = PipelineBuilder.build_pipeline( vkbDevice.device, renderPass );
+        SwapchainDeletionQueue.push_back([=]()
+        {
+            vkDestroyPipelineLayout( vkbDevice.device, *pipelineLayout, nullptr );
+            vkDestroyPipeline( vkbDevice.device, *pipeline, nullptr );
+        });
+    });
+    createPipelines( shadersLoaded, &trianglePipelineLayout, &trianglePipeline );
+    lunar_log( "Pipelines created in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds )
+    lunar::ResetStopwatch( &stopwatch );
     
     lunar_log( "Beggining runtime, init sequence took %0.1fms\n\n", lunar::CheckStopwatch(starting_time).result.milliseconds )
     //================================RUNTIME====================================
+    std::unordered_map<string, bool> windowthings;
 
     SDL_Event e;
-    Uint32 runtime_status = LUNAR_STATUS_IDLE;
+    
     while (!lunar::CompareFlags(runtime_status, LUNAR_STATUS_QUIT))
     {
         lunar::StopWatch frameDelta;
@@ -330,6 +459,21 @@ int main()
             if (e.type == SDL_QUIT)
             {
                 runtime_status |= LUNAR_STATUS_QUIT;
+                break;
+            }
+            switch( e.button.button )
+            {
+                case SDL_BUTTON_LEFT:
+                    if( e.type == SDL_MOUSEBUTTONDOWN )
+                    windowthings["Left mouse"] = true;
+                    else if( e.type == SDL_MOUSEBUTTONUP )
+                    windowthings["Left mouse"] = false;
+                break;
+                case SDL_BUTTON_RIGHT:
+                    if( e.type == SDL_MOUSEBUTTONDOWN )
+                    windowthings["Right mouse"] = true;
+                    else if( e.type == SDL_MOUSEBUTTONUP )
+                    windowthings["Right mouse"] = false;
                 break;
             }
             switch( e.key.keysym.sym )
@@ -357,6 +501,7 @@ int main()
                     lunar::RqueueUse(SwapchainDeletionQueue);
                     SwapchainDeletionQueue.clear();
                     (swipychain)(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
+                    createPipelines( shadersLoaded, &trianglePipelineLayout, &trianglePipeline );
                     //lunar_log("uhhh %lu\n", vkbSwapchain.get_image_views().value().size())
                     //lunar_log("uhhh %lu\n", swpchain.image_views.size())
                     //lunar_log("uhhh %lu\n", SwapchainDeletionQueue.size())
@@ -389,13 +534,19 @@ int main()
         VK_CHECK(vkBeginCommandBuffer( cmd, &cmdBeginInfo ));
 
         VkClearValue clearColor;
-        clearColor.color = { { .1f, .1f, .1f, 1.f } };
+        glm::vec4 rgba = { .2f, .2f, .2f, 1.f };
+        if( (*windowthings.find("Left mouse")).second )
+            rgba.r += .3f;
+
+        if( (*windowthings.find("Right mouse")).second )
+            rgba.b += .3f;
+
+        clearColor.color = { rgba.r, rgba.g, rgba.b, rgba.a };
 
 
         //Now its time to stretch out the render pass for use, lets give it our current frame buffer using the swapchain image index
-        
         auto rpBeginInfo = vkinit::renderpass_begin_info( renderPass, mainwindow.size, frameBufs[swpchainIndex] );
-        //lets set our clear value
+        //set our clear value
         rpBeginInfo.pClearValues = &clearColor;
         
 
@@ -405,7 +556,11 @@ int main()
         //Now that weve given the renderpass to the cmd buffer we can now begin giving commands!
         //=====================================RENDERPASS STARTS HERE IDIOT========================================
 
-        
+        //lets see if it works (it probably wont lmao)
+        //first we bind the pipeline to the command buffer, of course its a graphics type, so lets specify
+        vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline );
+        vkCmdDraw( cmd, 3, 1, 0, 0 );
+        //wtf it worked
 
         //======================================RENDERPASS ENDS HERE IDIOT=========================================
         vkCmdEndRenderPass( cmd );
@@ -445,14 +600,13 @@ int main()
         //Lets finally present our image! Show them what a gaping hole we left~ lmao
         VK_CHECK(vkQueuePresentKHR( Queue, &presentInfo ));
 
-        lunar::CheckStopwatch(frameDelta).result.milliseconds;
+        //lunar::CheckStopwatch(frameDelta).result.milliseconds;
 
         ++FRAME_NUMBER;
         #else
         lunar::WaitMS(17);
         #endif
     }
-    
 
     //string hc[] = {"hello", "goodbye"};
     //string hg[] = {"screw you", "sdfoiajd"};
@@ -461,7 +615,6 @@ int main()
     //memcpy(&hd[2], hg, sizeof(hg));
     
     //============================END OF RUNTIME=================================
-    
     
     lunar_log( "Lunarge is shutting down... code = %lu\n", runtime_status )
     lunar_log( "Runtime duration was %0.2f minutes\n", lunar::CheckStopwatch(stopwatch).result.minutes )

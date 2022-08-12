@@ -117,6 +117,15 @@ VkRenderPassBeginInfo vkinit::renderpass_begin_info(VkRenderPass renderPass, VkE
 	return info;
 }
 
+VkShaderModuleCreateInfo vkinit::shader_module_create_info()
+{
+	VkShaderModuleCreateInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	info.pNext = nullptr;
+
+	return info;
+}
+
 VkPipelineShaderStageCreateInfo vkinit::pipeline_shader_stage_create_info(VkShaderStageFlagBits stage, VkShaderModule shaderModule)
 {
 	VkPipelineShaderStageCreateInfo info{};

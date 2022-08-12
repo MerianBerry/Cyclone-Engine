@@ -21,6 +21,9 @@ namespace vkinit {
 
 	VkRenderPassBeginInfo renderpass_begin_info(VkRenderPass renderPass, VkExtent2D windowExtent, VkFramebuffer framebuffer);
 
+	//MAKE SURE CODESIZE IS IN BYTES YOU IDIOT
+	VkShaderModuleCreateInfo shader_module_create_info();
+
 	VkPipelineShaderStageCreateInfo pipeline_shader_stage_create_info(VkShaderStageFlagBits stage, VkShaderModule shaderModule);
 
 	VkPipelineVertexInputStateCreateInfo vertex_input_state_create_info();

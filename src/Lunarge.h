@@ -105,8 +105,8 @@ namespace lunar
 
     template<class T>
     using Lambda_vec = std::vector<std::function<T()>>;
-    template<class T>
-    using Lambda = std::function<T()>;
+    template< typename T, typename ..._Types >
+    using Lambda = std::function< T(_Types ...) >;
 
     typedef std::chrono::steady_clock::time_point SteadyTimePoint;
     struct times
@@ -187,9 +187,26 @@ namespace lunar
 
         VkFormat image_format;
 
-        std::vector<VkImage> images;
+        vector<VkImage> images;
 
-        std::vector<VkImageView> image_views;
+        vector<VkImageView> image_views;
+    };
+
+    class PipelineBuilder {
+    public:
+        vector<VkPipelineShaderStageCreateInfo> _shaderStages;
+        VkPipelineVertexInputStateCreateInfo _vertexInputInfo;
+        VkPipelineInputAssemblyStateCreateInfo _inputAssembly;
+        VkViewport _viewport;
+        VkRect2D _scissor;
+        VkPipelineRasterizationStateCreateInfo _rasterizer;
+        VkPipelineColorBlendAttachmentState _colorBlendAttachment;
+        VkPipelineMultisampleStateCreateInfo _multisampling;
+        VkPipelineLayout _pipelineLayout;
+
+        VkPipelineDepthStencilStateCreateInfo _depthStencil;
+
+        VkPipeline build_pipeline(VkDevice device, VkRenderPass pass);
     };
 
     struct Window

@@ -1312,3 +1312,6 @@ log.txt
 src/Lunar-scene.h
 src/Lunar-scene.cpp
 libomp140.x86_64.dll
+src/shaders/basicFrag.frag
+src/shaders/basicVert.vert
+distro_test/SDL2.dll

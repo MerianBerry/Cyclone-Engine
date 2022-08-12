@@ -9,9 +9,12 @@
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <sstream>
+#include <fstream>
 #include <array>
 #include <chrono>
 #include <thread>
+#include <unordered_set>
 #include <functional>
 
 
@@ -74,10 +77,8 @@ enum LUNAR_STATUS
     LUNAR_STATUS_OK = 0U,
     LUNAR_STATUS_QUIT = 1U,
     LUNAR_STATUS_MINIMIZED = 2U,
-    LUNAR_STATUS_EVENT_IDLE = 4U,
-    LUNAR_STATUS_IDLE = 8U,
-    LUNAR_STATUS_RENDERING = 16U,
-    LUNAR_STATUS_AWAITING_RENDERING = 32U
+    LUNAR_STATUS_IDLE = 4U,
+    LUNAR_STATUS_SHADERLOAD = 8U
 };
 enum LUNAR_PIPELINE
 {
