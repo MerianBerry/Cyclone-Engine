@@ -15,6 +15,7 @@
 
 lunar::Lambda_vec<void> MasterDeletionQueue;
 lunar::Lambda_vec<void> SwapchainDeletionQueue;
+lunar::Lambda_vec< void > ShaderDeletionQueue;
 
 using lunar::Lambda;
 
@@ -104,10 +105,16 @@ int main()
     lunar::ResetStopwatch(&stopwatch);
 
     //==============================GPU SELECTION================================
+    VkPhysicalDeviceFeatures gpuFeatures = { VK_FALSE };
+    gpuFeatures.fillModeNonSolid = VK_TRUE;
+    gpuFeatures.wideLines = VK_TRUE;
+    gpuFeatures.largePoints = VK_TRUE;
+
     vkb::PhysicalDeviceSelector phys_selector{ vkb_inst };
     vkb::PhysicalDevice phys_device = phys_selector
         .set_minimum_version(1, 3)
         .set_surface(mainwindow.surface)
+        .set_required_features( gpuFeatures )
         .select()
         .value();
     lunar_log("Physical device selected in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
@@ -330,59 +337,65 @@ int main()
     VkPipelineLayout trianglePipelineLayout;
     VkPipeline trianglePipeline;
 
-    runtime_status |= LUNAR_STATUS_SHADERLOAD;
-    for( auto o : shadersToLoad )
+    lunar::Lambda< void > loadShaders([&]()
     {
-        string nO = "shaders/" + o;
-        if( !lunar::DoesFileExist( nO ) )
+        runtime_status |= LUNAR_STATUS_SHADERLOAD;
+        for( auto o : shadersToLoad )
         {
-            lunar_log( "uh oh! shader %s doesnt exist\n", nO.c_str() )
-            runtime_status |= LUNAR_STATUS_QUIT;
-            break;
+            string nO = "shaders/" + o;
+            if( !lunar::DoesFileExist( nO ) )
+            {
+                lunar_log( "uh oh! shader %s doesnt exist\n", nO.c_str() )
+                runtime_status |= LUNAR_STATUS_QUIT;
+                break;
+            }
+            //lets get this bread i mean file, we want to load it with the cursor at the end and in binary
+            std::ifstream file( nO.c_str(), std::ios::ate | std::ios::binary );
+            if( !file.is_open() )
+            {
+                lunar_log( "uh oh! shader %s failed to load\n", nO.c_str() )
+                runtime_status |= LUNAR_STATUS_QUIT;
+                break;
+            }
+
+            //because we set the cursor at the end, we can get the size if the entire file
+            size_t fileSize = (size_t)file.tellg();
+
+            //why does vulkan expect the spirv code to be in Uint32? idk, but lets give it an array large enough
+            Uint32 buffer[fileSize / sizeof(Uint32)];
+
+            //set the cursor at the beginning for whatever reason
+            file.seekg( 0 );
+
+            //lets load this bitch!
+            file.read( (char*)buffer, fileSize );
+
+            //were done with the file, so we can unload it
+            file.close();
+
+            auto moduleCreateInfo = vkinit::shader_module_create_info( );
+
+            moduleCreateInfo.pCode = buffer;
+            moduleCreateInfo.codeSize = fileSize;
+
+            VkShaderModule Module;
+            VK_CHECK(vkCreateShaderModule( vkbDevice.device, &moduleCreateInfo, nullptr, &Module ));
+            shadersLoaded.push_back( Module );
+            //lunar_log( "our good friend %p\n", Module );
+
+            ShaderDeletionQueue.push_back([=]()
+            {
+                vkDestroyShaderModule( vkbDevice.device, Module, nullptr );
+            });
         }
-        //lets get this bread i mean file, we want to load it with the cursor at the end and in binary
-        std::ifstream file( nO.c_str(), std::ios::ate | std::ios::binary );
-        if( !file.is_open() )
-        {
-            lunar_log( "uh oh! shader %s failed to load\n", nO.c_str() )
-            runtime_status |= LUNAR_STATUS_QUIT;
-            break;
-        }
-
-        //because we set the cursor at the end, we can get the size if the entire file
-        size_t fileSize = (size_t)file.tellg();
-
-        //why does vulkan expect the spirv code to be in Uint32? idk, but lets give it an array large enough
-        Uint32 buffer[fileSize / sizeof(Uint32)];
-
-        //set the cursor at the beginning for whatever reason
-        file.seekg( 0 );
-
-        //lets load this bitch!
-        file.read( (char*)buffer, fileSize );
-
-        //were done with the file, so we can unload it
-        file.close();
-
-        auto moduleCreateInfo = vkinit::shader_module_create_info( );
-
-        moduleCreateInfo.pCode = buffer;
-        moduleCreateInfo.codeSize = fileSize;
-
-        VkShaderModule Module;
-        VK_CHECK(vkCreateShaderModule( vkbDevice.device, &moduleCreateInfo, nullptr, &Module ));
-        shadersLoaded.push_back( Module );
-        //lunar_log( "our good friend %p\n", Module );
-
-        MasterDeletionQueue.push_back([=]()
-        {
-            vkDestroyShaderModule( vkbDevice.device, Module, nullptr );
-        });
-    }
-    runtime_status &= LUNAR_STATUS_SHADERLOAD;
+        runtime_status &= LUNAR_STATUS_SHADERLOAD;
+    });
+    loadShaders();
+    
     lunar_log("Shader modules created in %0.1fms\n", lunar::CheckStopwatch( stopwatch ).result.milliseconds)
     lunar::ResetStopwatch( &stopwatch );
     
+    //TODO: allow switching from fill mode to line mode using F8
     lunar::Lambda< void, vector<VkShaderModule>, VkPipelineLayout*, VkPipeline* > createPipelines( [&]( vector<VkShaderModule> shaders, VkPipelineLayout* pipelineLayout, VkPipeline *pipeline )
     {
         //first, as per the standard, lets get the pipeline layout ready for use
@@ -422,7 +435,7 @@ int main()
         PipelineBuilder._inputAssembly = vkinit::input_assembly_create_info( VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST );
 
         //configure the rasterizer to draw filled triangles
-        PipelineBuilder._rasterizer = vkinit::rasterization_state_create_info(VK_POLYGON_MODE_FILL);
+        PipelineBuilder._rasterizer = vkinit::rasterization_state_create_info( VK_POLYGON_MODE_FILL, 1.f );
 
         //we don't use multisampling, so just run the default one
         PipelineBuilder._multisampling = vkinit::multisampling_state_create_info();
@@ -436,7 +449,7 @@ int main()
         //now, we finally give the pipeline our layout. then we build it
         PipelineBuilder._pipelineLayout = trianglePipelineLayout;
         *pipeline = PipelineBuilder.build_pipeline( vkbDevice.device, renderPass );
-        SwapchainDeletionQueue.push_back([=]()
+        ShaderDeletionQueue.push_back([=]()
         {
             vkDestroyPipelineLayout( vkbDevice.device, *pipelineLayout, nullptr );
             vkDestroyPipeline( vkbDevice.device, *pipeline, nullptr );
@@ -449,11 +462,16 @@ int main()
     lunar_log( "Beggining runtime, init sequence took %0.1fms\n\n", lunar::CheckStopwatch(starting_time).result.milliseconds )
     //================================RUNTIME====================================
     std::unordered_map<string, bool> windowthings;
+    array< bool, 79 > keys = { false };
+    array< bool, 79 > keysCpy = { false };
+    array< bool, 79 > keysPulse = { false };
+
 
     SDL_Event e;
-    
-    while (!lunar::CompareFlags(runtime_status, LUNAR_STATUS_QUIT))
+    while ( !lunar::CompareFlags(runtime_status, LUNAR_STATUS_QUIT) )
     {
+        keysPulse = { false };
+
         lunar::StopWatch frameDelta;
         lunar::StartStopwatch(&frameDelta);
         while(SDL_PollEvent(&e) != 0)
@@ -467,21 +485,194 @@ int main()
             {
                 case SDL_BUTTON_LEFT:
                     if( e.type == SDL_MOUSEBUTTONDOWN )
-                    windowthings["Left mouse"] = true;
+                    {
+                        windowthings["Left mouse"] = true;
+                        windowthings["Left mouse pulse"] = true;
+                    }
                     else if( e.type == SDL_MOUSEBUTTONUP )
-                    windowthings["Left mouse"] = false;
+                        windowthings["Left mouse"] = false;
                 break;
                 case SDL_BUTTON_RIGHT:
                     if( e.type == SDL_MOUSEBUTTONDOWN )
-                    windowthings["Right mouse"] = true;
+                    {
+                        windowthings["Right mouse"] = true;
+                        windowthings["Right mouse pulse"] = true;
+                    }
                     else if( e.type == SDL_MOUSEBUTTONUP )
                     windowthings["Right mouse"] = false;
                 break;
             }
-            switch( e.key.keysym.sym )
+            switch( e.type )
             {
-                case SDLK_ESCAPE:
-                    runtime_status |= LUNAR_STATUS_QUIT;
+                case SDL_KEYDOWN:
+                switch( e.key.keysym.sym )
+                {
+                    case SDLK_a : keys[ 0 ] = true; break;
+                    case SDLK_b : keys[ 1 ] = true; break;
+                    case SDLK_c : keys[ 2 ] = true; break;
+                    case SDLK_d : keys[ 3 ] = true; break;
+                    case SDLK_e : keys[ 4 ] = true; break;
+                    case SDLK_f : keys[ 5 ] = true; break;
+                    case SDLK_g : keys[ 6 ] = true; break;
+                    case SDLK_h : keys[ 7 ] = true; break;
+                    case SDLK_i : keys[ 8 ] = true; break;
+                    case SDLK_j : keys[ 9 ] = true; break;
+                    case SDLK_k : keys[ 10 ] = true; break;
+                    case SDLK_l : keys[ 11 ] = true; break;
+                    case SDLK_m : keys[ 12 ] = true; break;
+                    case SDLK_n : keys[ 13 ] = true; break;
+                    case SDLK_o : keys[ 14 ] = true; break;
+                    case SDLK_p : keys[ 15 ] = true; break;
+                    case SDLK_q : keys[ 16 ] = true; break;
+                    case SDLK_r : keys[ 17 ] = true; break;
+                    case SDLK_s : keys[ 18 ] = true; break;
+                    case SDLK_t : keys[ 19 ] = true; break;
+                    case SDLK_u : keys[ 20 ] = true; break;
+                    case SDLK_v : keys[ 21 ] = true; break;
+                    case SDLK_w : keys[ 22 ] = true; break;
+                    case SDLK_x : keys[ 23 ] = true; break;
+                    case SDLK_y : keys[ 24 ] = true; break;
+                    case SDLK_z : keys[ 25 ] = true; break;
+                    case SDLK_1 : keys[ 26 ] = true; break;
+                    case SDLK_2 : keys[ 27 ] = true; break;
+                    case SDLK_3 : keys[ 28 ] = true; break;
+                    case SDLK_4 : keys[ 29 ] = true; break;
+                    case SDLK_5 : keys[ 30 ] = true; break;
+                    case SDLK_6 : keys[ 31 ] = true; break;
+                    case SDLK_7 : keys[ 32 ] = true; break;
+                    case SDLK_8 : keys[ 33 ] = true; break;
+                    case SDLK_9 : keys[ 34 ] = true; break;
+                    case SDLK_SPACE : keys[ 35 ] = true; break;
+                    case SDLK_ESCAPE : keys[ 36 ] = true; break;
+                    case SDLK_LALT : keys[ 37 ] = true; break;
+                    case SDLK_LCTRL : keys[ 38 ] = true; break;
+                    case SDLK_LSHIFT : keys[ 39 ] = true; break;
+                    case SDLK_CAPSLOCK : keys[ 40 ] = true; break;
+                    case SDLK_TAB : keys[ 41 ] = true; break;
+                    case SDLK_BACKQUOTE : keys[ 42 ] = true; break;
+                    case SDLK_COMMA : keys[ 43 ] = true; break;
+                    case SDLK_PERIOD : keys[ 44 ] = true; break;
+                    case SDLK_RALT : keys[ 45 ] = true; break;
+                    case SDLK_RCTRL : keys[ 46 ] = true; break;
+                    case SDLK_RSHIFT : keys[ 47 ] = true; break;
+                    case SDLK_SLASH : keys[ 48 ] = true; break;
+                    case SDLK_SEMICOLON : keys[ 49 ] = true; break;
+                    case SDLK_QUOTE : keys[ 50 ] = true; break;
+                    case SDLK_KP_ENTER : keys[ 51 ] = true; break;
+                    case SDLK_LEFTBRACKET : keys[ 52 ] = true; break;
+                    case SDLK_RIGHTBRACKET : keys[ 53 ] = true; break;
+                    case SDLK_BACKSLASH : keys[ 54 ] = true; break;
+                    case SDLK_BACKSPACE : keys[ 55 ] = true; break;
+                    case SDLK_EQUALS : keys[ 56 ] = true; break;
+                    case SDLK_MINUS : keys[ 57 ] = true; break;
+                    case SDLK_F1 : keys[ 58 ] = true; break;
+                    case SDLK_F2 : keys[ 59 ] = true; break;
+                    case SDLK_F3 : keys[ 60 ] = true; break;
+                    case SDLK_F4 : keys[ 61 ] = true; break;
+                    case SDLK_F5 : keys[ 62 ] = true; break;
+                    case SDLK_F6 : keys[ 63 ] = true; break;
+                    case SDLK_F7 : keys[ 64 ] = true; break;
+                    case SDLK_F8 : keys[ 65 ] = true; break;
+                    case SDLK_F9 : keys[ 66 ] = true; break;
+                    case SDLK_F10: keys[ 67 ] = true; break;
+                    case SDLK_F11: keys[ 68 ] = true; break;
+                    case SDLK_F12: keys[ 69 ] = true; break;
+                    case SDLK_LEFT : keys[ 70 ] = true; break;
+                    case SDLK_RIGHT : keys[ 71 ] = true; break;
+                    case SDLK_UP : keys[ 72 ] = true; break;
+                    case SDLK_DOWN : keys[ 73 ] = true; break;
+                    case SDLK_INSERT : keys[ 74 ] = true; break;
+                    case SDLK_HOME : keys[ 75 ] = true; break;
+                    case SDLK_DELETE : keys[ 76 ] = true; break;
+                    case SDLK_END : keys[ 77 ] = true; break;
+                    case SDLK_PAGEUP : keys[ 78 ] = true; break;
+                    case SDLK_PAGEDOWN : keys[ 79 ] = true; break;
+                }
+                break;
+                case SDL_KEYUP:
+                switch( e.key.keysym.sym )
+                {
+                    case SDLK_a : keys[ 0 ] = false; break;
+                    case SDLK_b : keys[ 1 ] = false; break;
+                    case SDLK_c : keys[ 2 ] = false; break;
+                    case SDLK_d : keys[ 3 ] = false; break;
+                    case SDLK_e : keys[ 4 ] = false; break;
+                    case SDLK_f : keys[ 5 ] = false; break;
+                    case SDLK_g : keys[ 6 ] = false; break;
+                    case SDLK_h : keys[ 7 ] = false; break;
+                    case SDLK_i : keys[ 8 ] = false; break;
+                    case SDLK_j : keys[ 9 ] = false; break;
+                    case SDLK_k : keys[ 10 ] = false; break;
+                    case SDLK_l : keys[ 11 ] = false; break;
+                    case SDLK_m : keys[ 12 ] = false; break;
+                    case SDLK_n : keys[ 13 ] = false; break;
+                    case SDLK_o : keys[ 14 ] = false; break;
+                    case SDLK_p : keys[ 15 ] = false; break;
+                    case SDLK_q : keys[ 16 ] = false; break;
+                    case SDLK_r : keys[ 17 ] = false; break;
+                    case SDLK_s : keys[ 18 ] = false; break;
+                    case SDLK_t : keys[ 19 ] = false; break;
+                    case SDLK_u : keys[ 20 ] = false; break;
+                    case SDLK_v : keys[ 21 ] = false; break;
+                    case SDLK_w : keys[ 22 ] = false; break;
+                    case SDLK_x : keys[ 23 ] = false; break;
+                    case SDLK_y : keys[ 24 ] = false; break;
+                    case SDLK_z : keys[ 25 ] = false; break;
+                    case SDLK_1 : keys[ 26 ] = false; break;
+                    case SDLK_2 : keys[ 27 ] = false; break;
+                    case SDLK_3 : keys[ 28 ] = false; break;
+                    case SDLK_4 : keys[ 29 ] = false; break;
+                    case SDLK_5 : keys[ 30 ] = false; break;
+                    case SDLK_6 : keys[ 31 ] = false; break;
+                    case SDLK_7 : keys[ 32 ] = false; break;
+                    case SDLK_8 : keys[ 33 ] = false; break;
+                    case SDLK_9 : keys[ 34 ] = false; break;
+                    case SDLK_SPACE : keys[ 35 ] = false; break;
+                    case SDLK_ESCAPE : keys[ 36 ] = false; break;
+                    case SDLK_LALT : keys[ 37 ] = false; break;
+                    case SDLK_LCTRL : keys[ 38 ] = false; break;
+                    case SDLK_LSHIFT : keys[ 39 ] = false; break;
+                    case SDLK_CAPSLOCK : keys[ 40 ] = false; break;
+                    case SDLK_TAB : keys[ 41 ] = false; break;
+                    case SDLK_BACKQUOTE : keys[ 42 ] = false; break;
+                    case SDLK_COMMA : keys[ 43 ] = false; break;
+                    case SDLK_PERIOD : keys[ 44 ] = false; break;
+                    case SDLK_RALT : keys[ 45 ] = false; break;
+                    case SDLK_RCTRL : keys[ 46 ] = false; break;
+                    case SDLK_RSHIFT : keys[ 47 ] = false; break;
+                    case SDLK_SLASH : keys[ 48 ] = false; break;
+                    case SDLK_SEMICOLON : keys[ 49 ] = false; break;
+                    case SDLK_QUOTE : keys[ 50 ] = false; break;
+                    case SDLK_KP_ENTER : keys[ 51 ] = false; break;
+                    case SDLK_LEFTBRACKET : keys[ 52 ] = false; break;
+                    case SDLK_RIGHTBRACKET : keys[ 53 ] = false; break;
+                    case SDLK_BACKSLASH : keys[ 54 ] = false; break;
+                    case SDLK_BACKSPACE : keys[ 55 ] = false; break;
+                    case SDLK_EQUALS : keys[ 56 ] = false; break;
+                    case SDLK_MINUS : keys[ 57 ] = false; break;
+                    case SDLK_F1 : keys[ 58 ] = false; break;
+                    case SDLK_F2 : keys[ 59 ] = false; break;
+                    case SDLK_F3 : keys[ 60 ] = false; break;
+                    case SDLK_F4 : keys[ 61 ] = false; break;
+                    case SDLK_F5 : keys[ 62 ] = false; break;
+                    case SDLK_F6 : keys[ 63 ] = false; break;
+                    case SDLK_F7 : keys[ 64 ] = false; break;
+                    case SDLK_F8 : keys[ 65 ] = false; break;
+                    case SDLK_F9 : keys[ 66 ] = false; break;
+                    case SDLK_F10: keys[ 67 ] = false; break;
+                    case SDLK_F11: keys[ 68 ] = false; break;
+                    case SDLK_F12: keys[ 69 ] = false; break;
+                    case SDLK_LEFT : keys[ 70 ] = false; break;
+                    case SDLK_RIGHT : keys[ 71 ] = false; break;
+                    case SDLK_UP : keys[ 72 ] = false; break;
+                    case SDLK_DOWN : keys[ 73 ] = false; break;
+                    case SDLK_INSERT : keys[ 74 ] = false; break;
+                    case SDLK_HOME : keys[ 75 ] = false; break;
+                    case SDLK_DELETE : keys[ 76 ] = false; break;
+                    case SDLK_END : keys[ 77 ] = false; break;
+                    case SDLK_PAGEUP : keys[ 78 ] = false; break;
+                    case SDLK_PAGEDOWN : keys[ 79 ] = false; break;
+                }
                 break;
             }
             switch( e.window.event )
@@ -495,26 +686,37 @@ int main()
                     }
                 break;
                 case SDL_WINDOWEVENT_RESIZED:
-                    lunar::StopWatch swpchainrecreation;
-                    lunar::StartStopwatch( &swpchainrecreation );
                     waitAllFences( frames );
                     mainwindow.size.width = e.window.data1;
                     mainwindow.size.height = e.window.data2;
                     lunar::RqueueUse(SwapchainDeletionQueue);
                     SwapchainDeletionQueue.clear();
+
                     (swipychain)(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
                     createPipelines( shadersLoaded, &trianglePipelineLayout, &trianglePipeline );
-                    //lunar_log("uhhh %lu\n", vkbSwapchain.get_image_views().value().size())
-                    //lunar_log("uhhh %lu\n", swpchain.image_views.size())
-                    //lunar_log("uhhh %lu\n", SwapchainDeletionQueue.size())
-                    //lunar_log("Swapchain re-created in %0.1fms! | w: %lu, h: %lu\n", lunar::CheckStopwatch( swpchainrecreation ).result.milliseconds, e.window.data1, e.window.data2)
             }
         }
+        //=======================================LOGIC===========================================
         //lunar::CheckStopwatch(frame_delta).result.milliseconds;
+        for( int i = 0; i < keys.size(); ++i )
+        {
+            keysPulse[ i ] = keys[ i ] && !keysCpy[ i ];
+        }
 
+        if( keysPulse[ LUNARK_F8 ] )
+        {
+            waitAllFences( frames );
+            lunar::RqueueUse( ShaderDeletionQueue );
+            ShaderDeletionQueue.clear();
+            shadersLoaded.clear();
+
+            loadShaders();
+            createPipelines( shadersLoaded, &trianglePipelineLayout, &trianglePipeline );
+            lunar_log("Reloaded shaders\n")
+        }
+        //=====================================RENDERING=========================================
         #if 1
         //Frame data of the current frame
-        
 
         auto curFrame = &frames[GET_FRAME()];
         //Wait for the fences so we stay synced with the GPU, then reset the fence so it can be used again
@@ -603,6 +805,7 @@ int main()
         VK_CHECK(vkQueuePresentKHR( Queue, &presentInfo ));
 
         //lunar::CheckStopwatch(frameDelta).result.milliseconds;
+        keysCpy = keys;
 
         ++FRAME_NUMBER;
         #else
@@ -634,6 +837,7 @@ int main()
     wh += string_format( "%i\n%i\n%s", w, h, config[4].c_str() );
     lunar::WriteFile( "config.txt", wh );
     
+    lunar::RqueueUse( ShaderDeletionQueue );
     lunar::RqueueUse( MasterDeletionQueue );
     
     SDL_Quit();

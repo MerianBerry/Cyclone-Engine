@@ -30,7 +30,7 @@ namespace vkinit {
 
 	VkPipelineInputAssemblyStateCreateInfo input_assembly_create_info(VkPrimitiveTopology topology);
 
-	VkPipelineRasterizationStateCreateInfo rasterization_state_create_info(VkPolygonMode polygonMode);
+	VkPipelineRasterizationStateCreateInfo rasterization_state_create_info(VkPolygonMode polygonMode, float lineWidth = 1.f);
 
 	VkPipelineMultisampleStateCreateInfo multisampling_state_create_info();
 
