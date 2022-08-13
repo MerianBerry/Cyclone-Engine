@@ -1312,6 +1312,10 @@ log.txt
 src/Lunar-scene.h
 src/Lunar-scene.cpp
 libomp140.x86_64.dll
-src/shaders/basicFrag.frag
-src/shaders/basicVert.vert
 distro_test/SDL2.dll
+src/depricated/Lunar-runtime.h
+distro_test/assets/tri.mesh
+distro_test/shaders/basicFrag.spv
+distro_test/shaders/basicVert.spv
+assets/toyota_corola.mtl
+assets/toyota_corola.obj

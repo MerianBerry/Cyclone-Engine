@@ -1,32 +1,29 @@
-#include "Lunar-runtime.h"
+#include "Lunarge.h"
 #include "Lunar-inits.h"
 #include <iostream>
 
-#define VK_CHECK(result)                                                 \
-	do                                                              \
-	{                                                               \
-		VkResult err = result;                                           \
-		if (err)                                                    \
-		{                                                           \
-            lunar::WaitMS(5000);                         \
-			abort();                                                \
-		}                                                           \
+//#define SHADER_VERBOSE
+
+#define VK_CHECK(result)                           \
+	do                                             \
+	{                                              \
+		VkResult err = result;                     \
+		if (err)                                   \
+		{                                          \
+            lunar::WaitMS(5000);                   \
+			abort();                               \
+		}                                          \
 	} while (0)
 
-lunar::Lambda_vec<void> MasterDeletionQueue;
-lunar::Lambda_vec<void> SwapchainDeletionQueue;
+lunar::Lambda_vec< void > MasterDeletionQueue;
+lunar::Lambda_vec< void > SwapchainDeletionQueue;
 lunar::Lambda_vec< void > ShaderDeletionQueue;
+lunar::Lambda_vec< void > MeshDeletionQueue;
 
-using lunar::Lambda;
+using lunar::Lambda; using std::pair;
 
 constexpr Uint32 FRAME_WAIT = std::numeric_limits<Uint32>::max();
 constexpr Uint8 FRAME_OVERLAP = 2;
-Uint64 FRAME_NUMBER = 0;
-
-Uint8 GET_FRAME()
-{
-    return FRAME_NUMBER % 2;
-}
 
 void labort()
 {
@@ -57,21 +54,21 @@ int main()
     lunar::ResetStopwatch( &stopwatch );
 
     vkb::InstanceBuilder inst_builder;
-    vkb::Instance vkb_inst;
+    vkb::Instance vkbInstance;
     VkDebugUtilsMessengerEXT debugger;
 
-    vkb_inst = inst_builder.set_app_name( "Lunarge" )
+    vkbInstance = inst_builder.set_app_name( "Lunarge" )
     .request_validation_layers()
     .require_api_version(1, 3, 0)
     .use_default_debug_messenger()
     .build().value();
 
-    debugger = vkb_inst.debug_messenger;
+    debugger = vkbInstance.debug_messenger;
 
     MasterDeletionQueue.push_back(
     [=]()
     {
-        vkb::destroy_instance(vkb_inst);
+        vkb::destroy_instance(vkbInstance);
         //lunar_log( "Destroyed vulkan (vkb) instance :)\n" )
     });
     
@@ -96,10 +93,10 @@ int main()
     mainwindow.pos.y,
     mainwindow.size.width,
     mainwindow.size.height,
-    SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+    SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MOUSE_FOCUS );
 
-    SDL_SetWindowMinimumSize(mainwindow.sdl_handle, 960, 540);
-    SDL_Vulkan_CreateSurface(mainwindow.sdl_handle, vkb_inst.instance, &mainwindow.surface);
+    SDL_SetWindowMinimumSize(mainwindow.sdl_handle, 480, 270);
+    SDL_Vulkan_CreateSurface(mainwindow.sdl_handle, vkbInstance.instance, &mainwindow.surface);
 
     lunar_log("Window creation has been completed in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
     lunar::ResetStopwatch(&stopwatch);
@@ -110,8 +107,8 @@ int main()
     gpuFeatures.wideLines = VK_TRUE;
     gpuFeatures.largePoints = VK_TRUE;
 
-    vkb::PhysicalDeviceSelector phys_selector{ vkb_inst };
-    vkb::PhysicalDevice phys_device = phys_selector
+    vkb::PhysicalDeviceSelector phys_selector{ vkbInstance };
+    vkb::PhysicalDevice physDevice = phys_selector
         .set_minimum_version(1, 3)
         .set_surface(mainwindow.surface)
         .set_required_features( gpuFeatures )
@@ -120,7 +117,7 @@ int main()
     lunar_log("Physical device selected in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
     lunar::ResetStopwatch(&stopwatch);
 
-    vkb::DeviceBuilder deviceBuilder{ phys_device };
+    vkb::DeviceBuilder deviceBuilder{ physDevice };
 
     VkPhysicalDeviceShaderDrawParametersFeatures shader_draw_parameters_features = {};
 	shader_draw_parameters_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
@@ -131,8 +128,19 @@ int main()
     
     lunar_log("Device has been selected in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
     lunar::ResetStopwatch(&stopwatch);
-    
 
+    //look at this man
+    VmaAllocator vmaAllocator;
+
+    {
+        VmaAllocatorCreateInfo info = {};
+        info.physicalDevice = physDevice.physical_device;
+        info.device = vkbDevice.device;
+        info.instance = vkbInstance;
+        info.vulkanApiVersion = VK_API_VERSION_1_3;
+        vmaCreateAllocator( &info, &vmaAllocator );
+    }
+    
     //=============================MF SWAPCHAIN==================================
 
     vkb::Swapchain vkbSwapchain;
@@ -142,7 +150,7 @@ int main()
     vector<VkFramebuffer> frameBufs;
 
     std::function<void(VkRenderPass*, vector<VkFramebuffer>*, lunar::swapchain*, lunar::Window*, vkb::Swapchain*)> swipychain([=](VkRenderPass *rdpass, vector<VkFramebuffer> *fmrbufs, lunar::swapchain *swapchain, lunar::Window *window, vkb::Swapchain* swph){
-        vkb::SwapchainBuilder vkswapchain_builder{ phys_device, vkbDevice.device, window->surface };
+        vkb::SwapchainBuilder vkswapchain_builder{ physDevice, vkbDevice.device, window->surface };
         
         auto tmpswapchain = vkswapchain_builder
         .set_desired_format((VkSurfaceFormatKHR){ VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR })
@@ -289,31 +297,76 @@ int main()
     });
     swipychain(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
 
-
     lunar_log( "Swapchain created in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds )
     lunar::ResetStopwatch(&stopwatch);
 
     vector<lunar::frameData> frames ( FRAME_OVERLAP );
-    
-    VkSemaphoreCreateInfo renderSemaphoreInfo = vkinit::semaphore_create_info();
-    VkSemaphoreCreateInfo presentSemaphoreInfo = vkinit::semaphore_create_info();
+    VkFence uploadFence = {};
+    VkCommandBuffer uploadCommandBuffer = {};
+    VkCommandPool uploadCommandPool = {};
 
-    VkFenceCreateInfo fenceInfo = vkinit::fence_create_info( VK_FENCE_CREATE_SIGNALED_BIT );
-    VkCommandPoolCreateInfo cmdPoolInfo = vkinit::command_pool_create_info( (Uint32)LUNAR_QUEUETYPE_GRAPHICS, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT );
-
-    for ( int i = 0; i < frames.size(); ++i )
     {
-        VK_CHECK(vkCreateCommandPool( vkbDevice.device, &cmdPoolInfo, nullptr, &frames[i].cmdPool ));
-        auto cmdAllocInfo = vkinit::command_buffer_allocate_info( frames[i].cmdPool );
-        VK_CHECK(vkAllocateCommandBuffers( vkbDevice.device, &cmdAllocInfo, &frames[i].cmdBuf ));
+        VkSemaphoreCreateInfo renderSemaphoreInfo = vkinit::semaphore_create_info();
+        VkSemaphoreCreateInfo presentSemaphoreInfo = vkinit::semaphore_create_info();
 
-        VK_CHECK(vkCreateSemaphore( vkbDevice.device, &renderSemaphoreInfo, nullptr, &frames[i].render_semaphore ));
-        VK_CHECK(vkCreateSemaphore( vkbDevice.device, &presentSemaphoreInfo, nullptr, &frames[i].present_semaphore ));
-        VK_CHECK(vkCreateFence( vkbDevice.device, &fenceInfo, nullptr, &frames[i].render_fence ));
+        VkFenceCreateInfo fenceInfo = vkinit::fence_create_info( VK_FENCE_CREATE_SIGNALED_BIT );
+        VkCommandPoolCreateInfo cmdPoolInfo = vkinit::command_pool_create_info( (Uint32)LUNAR_QUEUETYPE_GRAPHICS, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT );
+
+        VkFenceCreateInfo uploadFenceInfo = vkinit::fence_create_info();
+        VkCommandPoolCreateInfo uploadCommandPoolInfo = vkinit::command_pool_create_info( (Uint32)LUNAR_QUEUETYPE_GRAPHICS );
+        VK_CHECK(vkCreateCommandPool( vkbDevice.device, &uploadCommandPoolInfo, nullptr, &uploadCommandPool ));
+
+        VkCommandBufferAllocateInfo uploadCmdBufAllocInfo = vkinit::command_buffer_allocate_info( uploadCommandPool );
+        VK_CHECK(vkAllocateCommandBuffers( vkbDevice.device, &uploadCmdBufAllocInfo, &uploadCommandBuffer ));
+
+        VK_CHECK(vkCreateFence( vkbDevice.device, &uploadFenceInfo, nullptr, &uploadFence ));
+
+        for ( int i = 0; i < frames.size(); ++i )
+        {
+            VK_CHECK(vkCreateCommandPool( vkbDevice.device, &cmdPoolInfo, nullptr, &frames[i].cmdPool ));
+            auto cmdAllocInfo = vkinit::command_buffer_allocate_info( frames[i].cmdPool );
+            VK_CHECK(vkAllocateCommandBuffers( vkbDevice.device, &cmdAllocInfo, &frames[i].cmdBuf ));
+
+            VK_CHECK(vkCreateSemaphore( vkbDevice.device, &renderSemaphoreInfo, nullptr, &frames[i].render_semaphore ));
+            VK_CHECK(vkCreateSemaphore( vkbDevice.device, &presentSemaphoreInfo, nullptr, &frames[i].present_semaphore ));
+            VK_CHECK(vkCreateFence( vkbDevice.device, &fenceInfo, nullptr, &frames[i].render_fence ));
+        }
     }
+
+    ImmediateSubmit = Lambda< void, Lambda< void, VkCommandBuffer >>([&](Lambda< void, VkCommandBuffer > _func)
+    {
+        VkCommandBuffer cmd = uploadCommandBuffer;
+        
+
+        //begin the command buffer recording. We will use this command buffer exactly once before resetting, so we tell vulkan that
+	    VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+
+        VK_CHECK(vkBeginCommandBuffer( cmd, &cmdBeginInfo ));
+
+        //hit up the lambda and give it our juicy cock i mean command buffer
+        _func( cmd );
+        
+        VK_CHECK(vkEndCommandBuffer( cmd ));
+
+        //for the commands into submition i mean submit the commands
+        VkSubmitInfo submit = vkinit::submit_info(&cmd);
+        
+        //submit command buffer to the queue and execute it.
+        // uploadFence will now block until the graphic commands finish execution
+        VK_CHECK(vkQueueSubmit( vkbDevice.get_queue((vkb::QueueType)LUNAR_QUEUETYPE_GRAPHICS).value(), 1, &submit, uploadFence ));
+
+        //why am i so horny for dick?
+        vkWaitForFences( vkbDevice.device, 1, &uploadFence, true, std::numeric_limits<Uint64>::max() );
+        vkResetFences( vkbDevice.device, 1, &uploadFence );
+
+        // reset the command buffers inside the command pool
+        vkResetCommandPool( vkbDevice.device, uploadCommandPool, 0 );
+    });
 
     MasterDeletionQueue.push_back([=]()
     {
+        vkDestroyFence( vkbDevice.device, uploadFence, nullptr );
+        vkDestroyCommandPool( vkbDevice.device, uploadCommandPool, nullptr );
         for( auto o : frames )
         {
             vkDestroyFence( vkbDevice.device, o.render_fence, nullptr );
@@ -324,7 +377,7 @@ int main()
         }
 
         SDL_DestroyWindow( mainwindow.sdl_handle );
-        vkDestroySurfaceKHR( vkb_inst.instance, mainwindow.surface, nullptr );
+        vkDestroySurfaceKHR( vkbInstance.instance, mainwindow.surface, nullptr );
         vkb::destroy_device( vkbDevice );
         //lunar_log( "Destroyed vulkan (vkb) device :)\n" )
     });
@@ -336,6 +389,7 @@ int main()
     //omg a pipeline *flush*
     VkPipelineLayout trianglePipelineLayout;
     VkPipeline trianglePipeline;
+    Uint8 FillType = 0;
 
     lunar::Lambda< void > loadShaders([&]()
     {
@@ -360,6 +414,9 @@ int main()
 
             //because we set the cursor at the end, we can get the size if the entire file
             size_t fileSize = (size_t)file.tellg();
+            #ifdef SHADER_VERBOSE
+            lunar_log( "Loaded shader file %s, its size is %lu in bytes\n", o.c_str(), fileSize )
+            #endif
 
             //why does vulkan expect the spirv code to be in Uint32? idk, but lets give it an array large enough
             Uint32 buffer[fileSize / sizeof(Uint32)];
@@ -382,10 +439,16 @@ int main()
             VK_CHECK(vkCreateShaderModule( vkbDevice.device, &moduleCreateInfo, nullptr, &Module ));
             shadersLoaded.push_back( Module );
             //lunar_log( "our good friend %p\n", Module );
+            #ifdef SHADER_VERBOSE
+            lunar_log( "Created shader module %p\n", Module )
+            #endif
 
             ShaderDeletionQueue.push_back([=]()
             {
                 vkDestroyShaderModule( vkbDevice.device, Module, nullptr );
+                #ifdef SHADER_VERBOSE
+                lunar_log( "Destroyed shader module %p\n", Module )
+                #endif
             });
         }
         runtime_status &= LUNAR_STATUS_SHADERLOAD;
@@ -417,7 +480,15 @@ int main()
             vkinit::pipeline_shader_stage_create_info( VK_SHADER_STAGE_FRAGMENT_BIT, basicFrag )
         );
 
+        auto vertDesc = lunar::Vertex::GetVertexDescription();
         PipelineBuilder._vertexInputInfo = vkinit::vertex_input_state_create_info();
+
+        PipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertDesc.attribs.data();
+        PipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = vertDesc.attribs.size();
+
+        PipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertDesc.bindings.data();
+        PipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = vertDesc.bindings.size();
+        
 
         //lets set its girthyness
         PipelineBuilder._viewport.x = 0.0f;
@@ -435,7 +506,7 @@ int main()
         PipelineBuilder._inputAssembly = vkinit::input_assembly_create_info( VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST );
 
         //configure the rasterizer to draw filled triangles
-        PipelineBuilder._rasterizer = vkinit::rasterization_state_create_info( VK_POLYGON_MODE_FILL, 1.f );
+        PipelineBuilder._rasterizer = vkinit::rasterization_state_create_info( (VkPolygonMode)FillType, 1.f );
 
         //we don't use multisampling, so just run the default one
         PipelineBuilder._multisampling = vkinit::multisampling_state_create_info();
@@ -449,22 +520,49 @@ int main()
         //now, we finally give the pipeline our layout. then we build it
         PipelineBuilder._pipelineLayout = trianglePipelineLayout;
         *pipeline = PipelineBuilder.build_pipeline( vkbDevice.device, renderPass );
+        #ifdef SHADER_VERBOSE
+        lunar_log( "New pipeline %p\n", *pipeline )
+        lunar_log( "Pipeline layout %p is attributed with pipeline %p\n", *pipelineLayout, *pipeline )
+        #endif
         ShaderDeletionQueue.push_back([=]()
         {
             vkDestroyPipelineLayout( vkbDevice.device, *pipelineLayout, nullptr );
             vkDestroyPipeline( vkbDevice.device, *pipeline, nullptr );
+            #ifdef SHADER_VERBOSE
+            lunar_log( "Destroyed pipeline layout %p\n", *pipelineLayout )
+            lunar_log( "Destroyed pipeline %p\n", *pipeline )
+            #endif
         });
     });
+
+    Lambda< void > reloadShaders([&]()
+    {
+        waitAllFences( frames );
+        lunar::RqueueUse( ShaderDeletionQueue );
+        ShaderDeletionQueue.clear();
+        shadersLoaded.clear();
+
+        loadShaders();
+        createPipelines( shadersLoaded, &trianglePipelineLayout, &trianglePipeline );
+        #ifdef SHADER_VERBOSE
+        lunar_log("Reloaded shaders\n")
+        #endif
+    });
+
     createPipelines( shadersLoaded, &trianglePipelineLayout, &trianglePipeline );
     lunar_log( "Pipelines created in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds )
     lunar::ResetStopwatch( &stopwatch );
+
+    vector< lunar::Mesh > meshes = lunar::LoadMeshes( { "assets/tri.mesh "} ).result;
+    lunar::UploadMeshes( &meshes, vmaAllocator, &MeshDeletionQueue );
     
-    lunar_log( "Beggining runtime, init sequence took %0.1fms\n\n", lunar::CheckStopwatch(starting_time).result.milliseconds )
+    lunar_log( "Beginning runtime, init sequence took %0.1fms\n\n", lunar::CheckStopwatch(starting_time).result.milliseconds )
+
     //================================RUNTIME====================================
     std::unordered_map<string, bool> windowthings;
-    array< bool, 79 > keys = { false };
-    array< bool, 79 > keysCpy = { false };
-    array< bool, 79 > keysPulse = { false };
+    array< bool, 83 > keys = { false };
+    array< bool, 83 > keysCpy = { false };
+    array< bool, 83 > keysPulse = { false };
 
 
     SDL_Event e;
@@ -587,6 +685,9 @@ int main()
                     case SDLK_END : keys[ 77 ] = true; break;
                     case SDLK_PAGEUP : keys[ 78 ] = true; break;
                     case SDLK_PAGEDOWN : keys[ 79 ] = true; break;
+                    case SDLK_F13 : keys[ 80 ] = true; break;
+                    case SDLK_F14 : keys[ 81 ] = true; break;
+                    case SDLK_F15 : keys[ 82 ] = true; break;
                 }
                 break;
                 case SDL_KEYUP:
@@ -672,6 +773,9 @@ int main()
                     case SDLK_END : keys[ 77 ] = false; break;
                     case SDLK_PAGEUP : keys[ 78 ] = false; break;
                     case SDLK_PAGEDOWN : keys[ 79 ] = false; break;
+                    case SDLK_F13 : keys[ 80 ] = false; break;
+                    case SDLK_F14 : keys[ 81 ] = false; break;
+                    case SDLK_F15 : keys[ 82 ] = false; break;
                 }
                 break;
             }
@@ -689,11 +793,11 @@ int main()
                     waitAllFences( frames );
                     mainwindow.size.width = e.window.data1;
                     mainwindow.size.height = e.window.data2;
-                    lunar::RqueueUse(SwapchainDeletionQueue);
+                    lunar::RqueueUse( SwapchainDeletionQueue );
                     SwapchainDeletionQueue.clear();
 
                     (swipychain)(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
-                    createPipelines( shadersLoaded, &trianglePipelineLayout, &trianglePipeline );
+                    reloadShaders();
             }
         }
         //=======================================LOGIC===========================================
@@ -705,14 +809,12 @@ int main()
 
         if( keysPulse[ LUNARK_F8 ] )
         {
-            waitAllFences( frames );
-            lunar::RqueueUse( ShaderDeletionQueue );
-            ShaderDeletionQueue.clear();
-            shadersLoaded.clear();
-
-            loadShaders();
-            createPipelines( shadersLoaded, &trianglePipelineLayout, &trianglePipeline );
-            lunar_log("Reloaded shaders\n")
+            reloadShaders();
+        }
+        if( keysPulse[ LUNARK_F3 ] )
+        {
+            FillType = !FillType;
+            reloadShaders();
         }
         //=====================================RENDERING=========================================
         #if 1
@@ -763,8 +865,19 @@ int main()
         //lets see if it works (it probably wont lmao)
         //first we bind the pipeline to the command buffer, of course its a graphics type, so lets specify
         vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline );
-        vkCmdDraw( cmd, 3, 1, 0, 0 );
-        //wtf it worked
+
+        //time to bind this massive dong i mean triangle why am i so horny
+        
+        
+        for( int i = 0; i < meshes.size(); ++i )
+        {
+            VkBuffer buf = meshes[ i ]._vertexBuffer._buffer;
+            VkDeviceSize offset = 0;
+            vkCmdBindVertexBuffers( cmd, 0, 1, &buf, &offset );
+
+            vkCmdDraw( cmd, meshes[ i ].vertices.size(), 1, 0, i );
+        }
+        
 
         //======================================RENDERPASS ENDS HERE IDIOT=========================================
         vkCmdEndRenderPass( cmd );
@@ -825,6 +938,8 @@ int main()
     lunar_log( "Runtime duration was %0.2f minutes\n", lunar::CheckStopwatch(stopwatch).result.minutes )
 
     waitAllFences( frames );
+
+    lunar::RqueueUse( MeshDeletionQueue );
     
     lunar::RqueueUse( SwapchainDeletionQueue );
     vkDestroySwapchainKHR( vkbDevice.device, swpchain.swapchain, nullptr );

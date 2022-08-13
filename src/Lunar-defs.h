@@ -17,6 +17,8 @@
 #include <unordered_set>
 #include <functional>
 
+#include "vk_mem_alloc.h"
+
 
 #undef main
 
@@ -168,5 +170,8 @@ enum LUANR_KEY
     LUNARK_DELETE = 76U,
     LUNARK_END = 77U,
     LUNARK_PAGEUP = 78U,
-    LUNARK_PAGEDOWN = 79U
+    LUNARK_PAGEDOWN = 79U,
+    LUNARK_F13 = 80U,
+    LUNARK_F14 = 81U,
+    LUNARK_F15 = 82U
 };

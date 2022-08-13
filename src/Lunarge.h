@@ -24,6 +24,13 @@
 #include "Lunar-defs.h"
 using std::string; using std::vector; using std::function; using std::array;
 
+inline Uint64 FRAME_NUMBER = 0;
+
+inline Uint8 GET_FRAME()
+{
+    return FRAME_NUMBER % 2;
+}
+
 template<typename ... Args>
 std::string string_format( const std::string& format, Args ... args )
 {
@@ -208,6 +215,37 @@ namespace lunar
         VkCommandBuffer cmdBuf;
     };
 
+    struct AllocationBuffer
+    {
+        VkBuffer _buffer;
+        VmaAllocation _allocation;
+    };
+
+    struct VertexInputDesc
+    {
+        vector< VkVertexInputBindingDescription > bindings;
+        vector< VkVertexInputAttributeDescription > attribs;
+
+        VkPipelineVertexInputStateCreateFlags flags = 0;
+    };
+
+    struct Vertex
+    {
+        glm::vec3 position;
+        glm::vec3 normal;
+        glm::vec3 color;
+
+        static VertexInputDesc GetVertexDescription();
+    };
+
+    struct Mesh
+    {
+        vector< Vertex > vertices;
+        string name;
+
+        AllocationBuffer _vertexBuffer;
+    };
+
     /*struct instance
     {
         VkInstance vk_instance;
@@ -298,4 +336,12 @@ namespace lunar
     Lresult<void*> __cdecl CopyAllFiles(string from, string to);
 
     bool __cdecl DoesFileExist(string path);
+
+    Lresult< vector<Mesh> > LoadMeshes( vector< string > paths);
+
+    Lresult< vector<Mesh> > UploadMeshes( vector< Mesh > *meshes, VmaAllocator allocator, Lambda_vec< void > *deletionQueue ) ;
 }
+
+using lunar::Lambda;
+
+inline Lambda< void, Lambda< void, VkCommandBuffer >> ImmediateSubmit;
