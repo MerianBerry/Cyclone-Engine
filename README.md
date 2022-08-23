@@ -17,7 +17,7 @@ Right now (8-22-2022) only Lua is 100% confirmed, python will be tested sometime
 
 *(IN PROGRESS)* The structure of Cyclone has *not* reached its final form, I lied:
 
-**Cyclone instance**
+**Cyclone instance:**
 This will include *everything* that is needed to run, the engine will handle pretty much everything, including but not limited to:
 - Window
 - Render pipeline
@@ -25,10 +25,10 @@ This will include *everything* that is needed to run, the engine will handle pre
 - Vma globals
 - Meshes/Ui's/Textures
 
-**Global scripts**
+**Global scripts:**
 These will be what the user creates, the scripts will be called on a ``Update`` and ``Render`` function basis, where ``Update`` is logic processing, and ``Render`` is during the engines render pass. 
 
-**Objects**
+**Objects:**
 Because the engine doesn't have an object handling system, and probably never will, if thats what the user/dev wants/needs, they will either need to make it or use other code.
 
 
