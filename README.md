@@ -1,5 +1,7 @@
 # What is Lunar?
-LunarGE (Game engine / Graphics Engine) is a heavy in-development light-ish weight engine written in c++, and uses the Vulkan graphics api. *Planned* supported scripting languages are c++, lua, and python.
+LunarGE (Game engine / Graphics Engine) is a heavy in-development light-ish weight engine written in c++, and uses the Vulkan graphics api. *Planned* supported scripting languages are Lua and python. But I am looking into supporting Java and C#.
+
+Right now (8-22-2022) only Lua is 100% confirmed, python will be tested sometime soon. C++ was removed from the scripting language support due to troubles with structuring the engine and the requirement of clang, a C/C++ compiler. Also, this engine is being renamed to Cyclone engine/Cyclone game engine. The next push to this repo will namely have the renamed changes, Lua scripting and (hopefully) python scripting, although with very limited functions while all the new methods are being made.
 
 ### *NOTE: this readme is in progress, as things arent set in stone yet*
 
@@ -13,26 +15,36 @@ LunarGE (Game engine / Graphics Engine) is a heavy in-development light-ish weig
 
 ## Structure
 
-*(IN PROGRESS)* The structure of LunarGE has *not* reached its final form, I lied:
+*(IN PROGRESS)* The structure of Cyclone has *not* reached its final form, I lied:
 
-**Lunarge Instance**
-- Vulkan instance
-- Vulkan Debug messanger
-- Vulkan Command pool
-- Vulkan swapchain
-- Vulkan Device & Physical Device
+**Cyclone instance**
+This will include *everything* that is needed to run, the engine will handle pretty much everything, including but not limited to:
+- Window
+- Render pipeline
+- Vulkan globals
+- Vma globals
+- Meshes/Ui's/Textures
 
 **Global scripts**
+These will be what the user creates, the scripts will be called on a ``Update`` and ``Render`` function basis, where ``Update`` is logic processing, and ``Render`` is during the engines render pass. 
 
-
-
+**Objects**
+Because the engine doesn't have an object handling system, and probably never will, if thats what the user/dev wants/needs, they will either need to make it or use other code.
 
 
 ## Code Examples
-```c++
-    
+```lua
+-- LUA
 
+function Update()
+    print( "I am updating!" )
+end
+
+function Render()
+    print( "I am rendering!" )
+end
 ```
+This lua script, when used by the engine, will print "I am updating!" during logic updating, and "I am rendering!" during the renderpass.
 
 ## Libraries and API's
 ![Vulkan](docs/Vulkan_100px_Dec16.png)
