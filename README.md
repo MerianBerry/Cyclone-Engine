@@ -1,5 +1,5 @@
-# What is Lunar?
-LunarGE (Game engine / Graphics Engine) is a heavy in-development light-ish weight engine written in c++, and uses the Vulkan graphics api. *Planned* supported scripting languages are Lua and python. But I am looking into supporting Java and C#.
+# What is Cyclone?
+Cyclone (Game engine / Graphics Engine) is a heavy in-development light-ish weight engine written in c++, and uses the Vulkan graphics api. *Planned* supported scripting languages are Lua and python. But I am looking into supporting Java and C#.
 
 Right now (8-22-2022) only Lua is 100% confirmed, python will be tested sometime soon. C++ was removed from the scripting language support due to troubles with structuring the engine and the requirement of clang, a C/C++ compiler. Also, this engine is being renamed to Cyclone engine/Cyclone game engine. The next push to this repo will namely have the renaming changes, Lua scripting and (hopefully) python scripting, although with a very limited functionality while all the new functions are being made.
 
