@@ -1,17 +1,19 @@
-#include "Lunarge.h"
+#include "Cyclone.h"
 #include <iostream>
 #include <filesystem>
 
+using namespace cyc;
 
-void __cdecl lunar::WaitMS(uint32_t milliseconds)
+
+void __cdecl cyc::WaitMS(uint32_t milliseconds)
 {
     std::this_thread::sleep_for(std::chrono::milliseconds (milliseconds) );
 }
-void __cdecl lunar::WaitMCS(Uint32 microseconds)
+void __cdecl cyc::WaitUS(Uint32 microseconds)
 {
     std::this_thread::sleep_for((std::chrono::microseconds)microseconds);
 }
-lunar::Lresult<lunar::SteadyTimePoint> __cdecl lunar::StartStopwatch(StopWatch *timer)
+Lresult<SteadyTimePoint> __cdecl cyc::StartStopwatch(StopWatch *timer)
 {
     Lresult<SteadyTimePoint> res;
     timer->start_time = std::chrono::high_resolution_clock::now();
@@ -20,9 +22,9 @@ lunar::Lresult<lunar::SteadyTimePoint> __cdecl lunar::StartStopwatch(StopWatch *
     res.message = "Stopwatch started";
     return res;
 }
-lunar::Lresult<lunar::times> __cdecl lunar::CheckStopwatch(StopWatch timer, SteadyTimePoint comparitor)
+Lresult<times> __cdecl cyc::CheckStopwatch(StopWatch timer, SteadyTimePoint comparitor)
 {
-    Lresult<lunar::times> res;
+    Lresult<times> res;
 
     res.result.microseconds = (float)std::chrono::duration_cast<std::chrono::microseconds>(comparitor - timer.start_time).count();
     res.result.milliseconds =  res.result.microseconds/1000.f;
@@ -33,9 +35,9 @@ lunar::Lresult<lunar::times> __cdecl lunar::CheckStopwatch(StopWatch timer, Stea
     res.message = "Stopwatch checked";
     return res;
 }
-lunar::Lresult<lunar::times> __cdecl lunar::PauseStopwatch(StopWatch *timer)
+Lresult<times> __cdecl PauseStopwatch(StopWatch *timer)
 {
-    Lresult<lunar::times> res;
+    Lresult<times> res;
 
     timer->pause_time = std::chrono::high_resolution_clock::now();
 
@@ -48,28 +50,28 @@ lunar::Lresult<lunar::times> __cdecl lunar::PauseStopwatch(StopWatch *timer)
     res.message = "Stopwatch paused";
     return res;
 }
-lunar::Lresult<void*> __cdecl lunar::ResetStopwatch(StopWatch *timer)
+Lresult<void*> __cdecl cyc::ResetStopwatch(StopWatch *timer)
 {
     Lresult<void*> res;
     timer->start_time = std::chrono::high_resolution_clock::now();
     return res;
 }
 
-bool __cdecl lunar::CompareFlags(uint32_t lflag, uint32_t lcompare)
+bool __cdecl cyc::CompareFlags(uint32_t lflag, uint32_t lcompare)
 {
     return (lflag & lcompare) == lcompare;
 }
 
-bool __cdecl lunar::DoesFileExist(string path)
+bool __cdecl cyc::DoesFileExist(string path)
 {
     return std::filesystem::exists(path);
 }
-lunar::Lresult<string> __cdecl lunar::ReadFile(string path)
+Lresult<string> __cdecl cyc::ReadFile(string path)
 {
     Lresult<string> res;
-    if (!DoesFileExist(path))
+    if (!cyc::DoesFileExist(path))
     {
-        res.error_code = LUNAR_ERROR_FILE_DOESNT_EXIST;
+        res.error_code = CYC_ERROR_FILE_DOESNT_EXIST;
         res.message = "Path: " + path + " does not exist";
         return res;
     }
@@ -84,7 +86,7 @@ lunar::Lresult<string> __cdecl lunar::ReadFile(string path)
     res.message = "File [ " + path + " ] has been opened";
     return res;
 }
-lunar::Lresult<void*> __cdecl lunar::WriteFile(string path, string contents) {
+Lresult<void*> __cdecl cyc::WriteFile(string path, string contents) {
     Lresult<void*> res;
     std::ofstream outFile(path);
     if (outFile.is_open())
@@ -99,12 +101,12 @@ lunar::Lresult<void*> __cdecl lunar::WriteFile(string path, string contents) {
     }
     return res;
 }
-lunar::Lresult<void*> __cdecl lunar::AppendFile(string path, string addition)
+Lresult<void*> __cdecl cyc::AppendFile(string path, string addition)
 {
     Lresult<void*> res;
-    if (!DoesFileExist(path))
+    if (!cyc::DoesFileExist(path))
     {
-        res.error_code = LUNAR_ERROR_FILE_DOESNT_EXIST;
+        res.error_code = CYC_ERROR_FILE_DOESNT_EXIST;
         res.message = "Path: " + path + " does not exist";
         return res;
     }
@@ -119,15 +121,15 @@ lunar::Lresult<void*> __cdecl lunar::AppendFile(string path, string addition)
     }
     return res;
 }
-lunar::Lresult<vector<string>> __cdecl lunar::GetFiles(string path, string extention_filter) {
+Lresult<vector<string>> __cdecl cyc::GetFiles(string path, string extention_filter) {
     Lresult<vector<string>> result;
 
     using std::filesystem::directory_iterator;
     vector<string> goodFiles;
     //A for loop that iterates through all the files in the file path
-    if (!DoesFileExist(path))
+    if (!cyc::DoesFileExist(path))
     {
-        result.error_code = LUNAR_ERROR_FILE_DOESNT_EXIST;
+        result.error_code = CYC_ERROR_FILE_DOESNT_EXIST;
         result.message = "Path: " + path + " does not exist";
         return result;
     }
@@ -143,14 +145,14 @@ lunar::Lresult<vector<string>> __cdecl lunar::GetFiles(string path, string exten
     result.message = string(""+goodFiles.size()) + " Files have been found with extention [ " + extention_filter + " ] in path [ " + path + " ]";
     return result;
 }
-lunar::Lresult<vector<string>> __cdecl lunar::GetLines(string path)
+Lresult<vector<string>> __cdecl cyc::GetLines(string path)
 {
     Lresult<vector<string>> result;
 
     vector<string> got;
-    if ( !DoesFileExist(path) )
+    if ( !cyc::DoesFileExist(path) )
     {
-        result.error_code = LUNAR_ERROR_FILE_DOESNT_EXIST;
+        result.error_code = CYC_ERROR_FILE_DOESNT_EXIST;
         result.message = "Path: " + path + " does not exist";
         return result;
     }
@@ -163,7 +165,7 @@ lunar::Lresult<vector<string>> __cdecl lunar::GetLines(string path)
     result.result = got;
     return result;
 }
-lunar::Lresult<string> __cdecl lunar::GetLine(string path, int line)
+Lresult<string> __cdecl cyc::GetLine(string path, int line)
 {
     Lresult<string> res;
 
@@ -184,12 +186,12 @@ lunar::Lresult<string> __cdecl lunar::GetLine(string path, int line)
     res.message = string("Failed to get line [ " + line) + " ] for file + [ " + path + " ]" ; 
     return res;
 }
-string __cdecl lunar::GetCurrentDir()
+string __cdecl cyc::GetCurrentDir()
 {
     return std::filesystem::current_path().u8string();
 }
 
-VkPipeline lunar::PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
+VkPipeline cyc::PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass) {
 	//make viewport state from our stored viewport and scissor.
 	//at the moment we won't support multiple viewports or scissors
 	VkPipelineViewportStateCreateInfo viewportState = {};

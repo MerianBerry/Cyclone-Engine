@@ -13,22 +13,23 @@
     //#pragma clang diagnostic ignored "-W#pragma-messages"
 #endif
 
-#define lunar_log(fmt, args...) {                                                                       \
+#define cyc_log(fmt, args...) {                                                                       \
     string newFmt="[%s:%s:%i] "; newFmt+=fmt;                                                           \
     string file = __FILE__;                                                                             \
     if ( file.find_first_of('/') != string::npos ) file = file.substr( file.find_last_of('/') + 1 );    \
     newFmt=string_format (newFmt , file.c_str(), __func__, __LINE__, args );                            \
     std::cout << newFmt;                                                                                \
-    lunar::AppendFile("log.txt", newFmt);                                                               \
+    cyc::AppendFile("log.txt", newFmt);                                                               \
 }
-#include "Lunar-defs.h"
+#include "Cyclone-defs.h"
 using std::string; using std::vector; using std::function; using std::array;
 
 inline Uint64 FRAME_NUMBER = 0;
 
+inline constexpr Uint8 FRAME_OVERLAP = 3;
 inline Uint8 GET_FRAME()
 {
-    return FRAME_NUMBER % 2;
+    return FRAME_NUMBER % FRAME_OVERLAP;
 }
 
 template<typename ... Args>
@@ -42,14 +43,14 @@ std::string string_format( const std::string& format, Args ... args )
     return std::string( buf.get(), buf.get() + size - 1 ); // We don't want the '\0' inside
 }
 
-namespace lunar
+namespace cyc
 {
     template<typename T>
     struct Lresult
     {
         string message;
         T result;
-        Uint32 error_code = LUNAR_ERROR_SUCCESS;
+        Uint32 error_code = CYC_ERROR_SUCCESS;
     };
 
     template<class T>
@@ -182,7 +183,7 @@ namespace lunar
     struct Window
     {
         SDL_Window *sdl_handle;
-        VkExtent2D size = LUNAR_WINDOW_SIZE_DEFAULT;
+        VkExtent2D size = CYC_WINDOW_SIZE_DEFAULT;
         glm::vec2 pos = { SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED };
         VkSurfaceKHR surface;
         const char* title = "Babys first LunarGE game";
@@ -215,6 +216,22 @@ namespace lunar
         VkCommandBuffer cmdBuf;
     };
 
+    struct Shader
+    {
+        VkPipeline Pipeline;
+        VkPipelineLayout PipelineLayout;
+        vector< VkShaderModule > ShaderModules; 
+
+        string Name;
+        Uint32 Type;
+        uint32_t FillMode;
+        string VertShader;
+        string FragShader;
+        string CompShader;
+
+        Lambda_vec< void > Deletion;
+    };
+
     struct AllocationBuffer
     {
         VkBuffer _buffer;
@@ -240,10 +257,38 @@ namespace lunar
 
     struct Mesh
     {
+        glm::vec3 position = { 0.f, 0.f, 0.f };
+        glm::vec3 scale = { 1.f, 1.f, 1.f };
+        glm::vec3 rotation = { 0.f, 0.f, 0.f };
         vector< Vertex > vertices;
         string name;
 
         AllocationBuffer _vertexBuffer;
+    };
+    using Dmesh = Dtype< Mesh >;
+
+    struct MeshPushConstant
+    {
+        glm::vec4 data;
+        glm::mat4 renderMatrix;
+    };
+
+    struct Camera
+    {
+        glm::vec3 pos = { 0.f, 0.f, 0.f };
+        glm::vec3 rotation = { 0.f, 0.f, 0.f };
+        float FOV = 70.f;
+
+        glm::vec2 cuttof = { .1f, 200.f };
+        float orbit = 0.f;
+    };
+    struct Mouse
+    {
+        array< bool, 5 > hold = { false };
+        array< bool, 5 > holdCpy = { false };
+        array< bool, 5 > pulse = { false };
+
+        glm::vec2 velocity = { 0.f, 0.f };
     };
 
     /*struct instance
@@ -272,22 +317,29 @@ namespace lunar
 
 
         SDL_Window *sdl_handle;
-        VkExtent2D win_size = LUNAR_WINDOW_SIZE_DEFAULT;
+        VkExtent2D win_size = CYC_WINDOW_SIZE_DEFAULT;
         glm::vec2 win_pos = { SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED };
         VkSurfaceKHR vk_surface;
         const char* win_title = "Babys first LunarGE game";
         uint32_t win_flags = SDL_WINDOW_RESIZABLE;
 
-        uint32_t status = LUNAR_STATUS_IDLE;
+        uint32_t status = CYC_STATUS_IDLE;
 
-        #ifndef LUNAR_NO_DEBUG
+        #ifndef CYC_NO_DEBUG
         VkDebugUtilsMessengerEXT debug_messenger;
         #endif
     };*/
 
-    float get_time_since_start(uint32_t lformat = LUNAR_TIME_MILLISECONDS);
+    float get_time_since_start(uint32_t lformat = CYC_TIME_MILLISECONDS);
     void WaitMS(uint32_t milliseconds);
-    void WaitMCS(Uint32 microseconds);
+    void WaitUS(Uint32 microseconds);
+    inline void WaitUntilTrue( Lambda< bool > _condition )
+    {
+        while( !_condition() )
+        {
+            WaitUS( 2 );
+        }
+    }
     Lresult<SteadyTimePoint> __cdecl StartStopwatch(StopWatch *timer);
     Lresult<times> __cdecl CheckStopwatch(StopWatch timer, SteadyTimePoint comparitor = std::chrono::high_resolution_clock::now());
     Lresult<times> __cdecl PauseStopwatch(StopWatch *timer);
@@ -309,6 +361,15 @@ namespace lunar
         }
     }
     template<class T>
+    inline void __cdecl RCqueueUse( Lambda_vec<T> *_func )
+    {
+        for (auto i = _func->rbegin(); i != _func->rend(); ++i)
+        {
+            (*i)();
+        }
+        _func->clear();
+    }
+    template<class T>
     void __cdecl QueueUse(Lambda_vec<T> functionqueue)
     {
         for (auto i = functionqueue.begin(); i != functionqueue.end(); ++i)
@@ -319,9 +380,9 @@ namespace lunar
 
     Lresult<string> __cdecl ReadFile(string path);
 
-    Lresult<void*> __cdecl WriteFile(string path, string contents = "");
+    Lresult< void* > __cdecl WriteFile(string path, string contents = "");
 
-    Lresult<void*> __cdecl AppendFile(string path, string addition);
+    Lresult< void* > __cdecl AppendFile(string path, string addition);
 
     Lresult<vector<string>> __cdecl GetFiles(string path, string extention_filter);
 
@@ -337,11 +398,11 @@ namespace lunar
 
     bool __cdecl DoesFileExist(string path);
 
-    Lresult< vector<Mesh> > LoadMeshes( vector< string > paths);
+    Lresult< vector< Mesh >> LoadMeshes( vector< string > paths);
 
-    Lresult< vector<Mesh> > UploadMeshes( vector< Mesh > *meshes, VmaAllocator allocator, Lambda_vec< void > *deletionQueue ) ;
+    Lresult< vector< Mesh >> UploadMeshes( vector< Mesh > *meshes, VmaAllocator allocator, Lambda_vec< void > *deletionQueue );
 }
 
-using lunar::Lambda;
+using cyc::Lambda;
 
 inline Lambda< void, Lambda< void, VkCommandBuffer >> ImmediateSubmit;

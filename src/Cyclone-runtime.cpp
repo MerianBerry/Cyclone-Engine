@@ -1,8 +1,10 @@
-#include "Lunarge.h"
-#include "Lunar-inits.h"
+#include "Cyclone.h"
+#include "Cyclone-inits.h"
 #include <iostream>
 
 //#define SHADER_VERBOSE
+//#define NOWAIT_VERBOSE
+#undef pi
 
 #define VK_CHECK(result)                           \
 	do                                             \
@@ -10,52 +12,77 @@
 		VkResult err = result;                     \
 		if (err)                                   \
 		{                                          \
-            lunar::WaitMS(5000);                   \
+            cyc::WaitMS(5000);                   \
 			abort();                               \
 		}                                          \
 	} while (0)
 
-lunar::Lambda_vec< void > MasterDeletionQueue;
-lunar::Lambda_vec< void > SwapchainDeletionQueue;
-lunar::Lambda_vec< void > ShaderDeletionQueue;
-lunar::Lambda_vec< void > MeshDeletionQueue;
+cyc::Lambda_vec< void > MasterDeletionQueue;
+cyc::Lambda_vec< void > SwapchainDeletionQueue;
+cyc::Lambda_vec< void > MeshDeletionQueue;
 
-using lunar::Lambda; using std::pair;
+using cyc::Lambda; using std::pair;
 
 constexpr Uint32 FRAME_WAIT = std::numeric_limits<Uint32>::max();
-constexpr Uint8 FRAME_OVERLAP = 2;
+
+vector< Lambda< void >> _NOWAITLIST;
+#define NoWait _NOWAITLIST.push_back
+
+void main_( Uint32 *status )
+{
+    #ifdef NOWAIT_VERBOSE
+    cyc_log( "No wait thread created\n" )
+    #endif
+    while( !cyc::CompareFlags( *status, CYC_STATUS_QUIT ) )
+    {
+        for( auto o : _NOWAITLIST )
+        {
+            o();
+        }
+        _NOWAITLIST.clear();
+        cyc::WaitUS( 5 );
+    }
+    #ifdef NOWAIT_VERBOSE
+    cyc_log( "No wait thread dead" )
+    #endif
+}
 
 void labort()
 {
-    lunar::WaitMS(5000);
+    cyc::WaitMS(5000);
     abort();
 }
 
 int main()
 {
-    lunar::StopWatch starting_time;
-    lunar::StartStopwatch( &starting_time );
-    Uint32 runtime_status = LUNAR_STATUS_IDLE;
+    cyc::StopWatch starting_time;
+    cyc::StartStopwatch( &starting_time );
+    Uint32 runtime_status = CYC_STATUS_IDLE;
 
-    lunar::WriteFile("log.txt");
+    cyc::WriteFile("log.txt", "");
 
 	auto sys_start_time = std::chrono::system_clock::to_time_t( std::chrono::system_clock::now() );
-    lunar_log( "Lunarge initiated at %s\n", std::ctime( &sys_start_time ) )
+    cyc_log( "Lunarge initiated at %s\n", std::ctime( &sys_start_time ) )
 
-    lunar::StopWatch stopwatch;
-    lunar::StartStopwatch(&stopwatch);
+    std::thread _nowaitthread( main_, &runtime_status );
+    _nowaitthread.detach();
+
+    cyc::StopWatch stopwatch;
+    cyc::StartStopwatch(&stopwatch);
 
     if ( SDL_Init(SDL_INIT_EVERYTHING) != 0 )
     {
-        lunar_log( "SDL error: SDL failed to initilise :(\n" )
+        cyc_log( "SDL error: SDL failed to initilise :(\n" )
         labort();
     }
-    lunar_log( "SDL initiated in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds )
-    lunar::ResetStopwatch( &stopwatch );
+    cyc_log( "SDL initiated in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds )
+    cyc::ResetStopwatch( &stopwatch );
 
     vkb::InstanceBuilder inst_builder;
     vkb::Instance vkbInstance;
     VkDebugUtilsMessengerEXT debugger;
+    vkb::Device vkbDevice;
+    vkb::PhysicalDevice physDevice;
 
     vkbInstance = inst_builder.set_app_name( "Lunarge" )
     .request_validation_layers()
@@ -69,69 +96,84 @@ int main()
     [=]()
     {
         vkb::destroy_instance(vkbInstance);
-        //lunar_log( "Destroyed vulkan (vkb) instance :)\n" )
+        //cyc_log( "Destroyed vulkan (vkb) instance :)\n" )
     });
     
-    lunar_log("Vulkan instance initiated in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds)
-    lunar::ResetStopwatch(&stopwatch);
+    cyc_log("Vulkan instance initiated in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds)
+    cyc::ResetStopwatch(&stopwatch);
 
-    vector<string> config = lunar::GetLines("config.txt").result;
-    lunar::Window mainwindow;
-    if( config.size() == 0 )
+    if( !cyc::DoesFileExist( "cfg/config.txt" ) )
     {
-        lunar::WriteFile( "config.txt", string_format("%i\n%i\n%i\n%i\nLunarge", 960, 540, 0, 0) );
-        config = lunar::GetLines("config.txt").result;
+        cyc::WriteFile( "cfg/config.txt", "" );
     }
-    mainwindow.size.width = stoi(config[0]);
-    mainwindow.size.height = stoi(config[1]);
-    mainwindow.pos.x = stoi( config[2] ) == 0 ? SDL_WINDOWPOS_CENTERED : stoi( config[2] );
-    mainwindow.pos.y = stoi( config[3] ) == 0 ? SDL_WINDOWPOS_CENTERED : stoi( config[3] );
-    mainwindow.title = config[4].c_str();
+    vector<string> config = cyc::GetLines("cfg/config.txt").result;
+    cyc::Window mainwindow;
+    {
+        if( config.size() == 0 )
+        {
+            cyc::WriteFile( "cfg/config.txt", string_format("%i\n%i\n%i\n%i\nLunarge", 960, 540, 0, 0) );
+            config = cyc::GetLines("cfg/config.txt").result;
+        }
+        mainwindow.size.width = stoi(config[0]);
+        mainwindow.size.height = stoi(config[1]);
+        mainwindow.pos.x = stoi( config[2] ) == 0 ? SDL_WINDOWPOS_CENTERED : stoi( config[2] );
+        mainwindow.pos.y = stoi( config[3] ) == 0 ? SDL_WINDOWPOS_CENTERED : stoi( config[3] );
+        mainwindow.title = config[4].c_str();
+        
+        mainwindow.sdl_handle = SDL_CreateWindow(mainwindow.title,
+        mainwindow.pos.x,
+        mainwindow.pos.y,
+        mainwindow.size.width,
+        mainwindow.size.height,
+        SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MOUSE_FOCUS );
+
+        SDL_SetWindowMinimumSize(mainwindow.sdl_handle, 480, 270);
+        SDL_Vulkan_CreateSurface(mainwindow.sdl_handle, vkbInstance.instance, &mainwindow.surface);
+
+        cyc_log("Window creation has been completed in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds);
+        cyc::ResetStopwatch(&stopwatch);
+    }
     
-    mainwindow.sdl_handle = SDL_CreateWindow(mainwindow.title,
-    mainwindow.pos.x,
-    mainwindow.pos.y,
-    mainwindow.size.width,
-    mainwindow.size.height,
-    SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MOUSE_FOCUS );
-
-    SDL_SetWindowMinimumSize(mainwindow.sdl_handle, 480, 270);
-    SDL_Vulkan_CreateSurface(mainwindow.sdl_handle, vkbInstance.instance, &mainwindow.surface);
-
-    lunar_log("Window creation has been completed in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
-    lunar::ResetStopwatch(&stopwatch);
-
     //==============================GPU SELECTION================================
-    VkPhysicalDeviceFeatures gpuFeatures = { VK_FALSE };
-    gpuFeatures.fillModeNonSolid = VK_TRUE;
-    gpuFeatures.wideLines = VK_TRUE;
-    gpuFeatures.largePoints = VK_TRUE;
+    {
+        VkPhysicalDeviceFeatures gpuFeatures = { VK_FALSE };
+        gpuFeatures.fillModeNonSolid = VK_TRUE;
+        gpuFeatures.wideLines = VK_TRUE;
+        gpuFeatures.largePoints = VK_TRUE;
 
-    vkb::PhysicalDeviceSelector phys_selector{ vkbInstance };
-    vkb::PhysicalDevice physDevice = phys_selector
-        .set_minimum_version(1, 3)
-        .set_surface(mainwindow.surface)
-        .set_required_features( gpuFeatures )
-        .select()
-        .value();
-    lunar_log("Physical device selected in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
-    lunar::ResetStopwatch(&stopwatch);
-
-    vkb::DeviceBuilder deviceBuilder{ physDevice };
-
-    VkPhysicalDeviceShaderDrawParametersFeatures shader_draw_parameters_features = {};
-	shader_draw_parameters_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
-	shader_draw_parameters_features.pNext = nullptr;
-	shader_draw_parameters_features.shaderDrawParameters = VK_TRUE;
-
-    vkb::Device vkbDevice = deviceBuilder.add_pNext(&shader_draw_parameters_features).build().value();
+        vkb::PhysicalDeviceSelector phys_selector{ vkbInstance };
+        physDevice = phys_selector
+            .set_minimum_version(1, 3)
+            .set_surface(mainwindow.surface)
+            .set_required_features( gpuFeatures )
+            .select()
+            .value();
+    }
+    cyc_log("Physical device selected in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds);
+    cyc::ResetStopwatch(&stopwatch);
     
-    lunar_log("Device has been selected in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds);
-    lunar::ResetStopwatch(&stopwatch);
+    {
+        vkb::DeviceBuilder deviceBuilder{ physDevice };
+
+        VkPhysicalDeviceShaderDrawParametersFeatures shader_draw_parameters_features = {};
+        shader_draw_parameters_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
+        shader_draw_parameters_features.pNext = nullptr;
+        shader_draw_parameters_features.shaderDrawParameters = VK_TRUE;
+
+        VkPhysicalDeviceMaintenance4Features maintenance4Features;
+        maintenance4Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_FEATURES;
+        maintenance4Features.pNext = nullptr;
+        maintenance4Features.maintenance4 = VK_TRUE;
+
+        vkbDevice = deviceBuilder.add_pNext( &shader_draw_parameters_features ).add_pNext( &maintenance4Features ).build().value();
+        
+        
+    }
+    cyc_log("Device has been selected in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds);
+    cyc::ResetStopwatch(&stopwatch);
 
     //look at this man
     VmaAllocator vmaAllocator;
-
     {
         VmaAllocatorCreateInfo info = {};
         info.physicalDevice = physDevice.physical_device;
@@ -144,12 +186,12 @@ int main()
     //=============================MF SWAPCHAIN==================================
 
     vkb::Swapchain vkbSwapchain;
-    lunar::swapchain swpchain;
+    cyc::swapchain swpchain;
     //auto renderPass = std::make_unique<VkRenderPass>( NULL );
     VkRenderPass renderPass;
     vector<VkFramebuffer> frameBufs;
 
-    std::function<void(VkRenderPass*, vector<VkFramebuffer>*, lunar::swapchain*, lunar::Window*, vkb::Swapchain*)> swipychain([=](VkRenderPass *rdpass, vector<VkFramebuffer> *fmrbufs, lunar::swapchain *swapchain, lunar::Window *window, vkb::Swapchain* swph){
+    std::function<void(VkRenderPass*, vector<VkFramebuffer>*, cyc::swapchain*, cyc::Window*, vkb::Swapchain*)> swipychain([=](VkRenderPass *rdpass, vector<VkFramebuffer> *fmrbufs, cyc::swapchain *swapchain, cyc::Window *window, vkb::Swapchain* swph){
         vkb::SwapchainBuilder vkswapchain_builder{ physDevice, vkbDevice.device, window->surface };
         
         auto tmpswapchain = vkswapchain_builder
@@ -157,7 +199,7 @@ int main()
         .set_format_feature_flags(VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)
         .set_old_swapchain(*swph)
         //vulkan present mode
-        .set_desired_present_mode( (VkPresentModeKHR)LUNAR_PRESENT_MODE_VSYNC )
+        .set_desired_present_mode( (VkPresentModeKHR)CYC_PRESENT_MODE_VSYNC )
         .set_desired_extent(window->size.width, window->size.height)
         .build()
         .value();
@@ -168,20 +210,20 @@ int main()
         swapchain->image_views = tmpswapchain.get_image_views().value();
         swapchain->image_format = tmpswapchain.image_format;
         swapchain->images = tmpswapchain.get_images().value();
-        swapchain->presentmode = (VkPresentModeKHR)LUNAR_PRESENT_MODE_VSYNC;
+        swapchain->presentmode = (VkPresentModeKHR)CYC_PRESENT_MODE_VSYNC;
 
         vector<VkImageView> h1 = swph->get_image_views().value();
         vector<VkImageView> h2 = tmpswapchain.get_image_views().value();
 
         for ( auto o : h2 )
         {
-            //lunar_log( "tmpswapchain: %p\n", o )
+            //cyc_log( "tmpswapchain: %p\n", o )
             vkDestroyImageView( vkbDevice.device, o, nullptr );
         }
 
         for ( auto o : h1 )
         {
-            //lunar_log( "swph: %p\n", o )
+            //cyc_log( "swph: %p\n", o )
             vkDestroyImageView( vkbDevice.device, o, nullptr );
         }
 
@@ -189,12 +231,12 @@ int main()
         {
             for ( auto o : swapchain->image_views )
             {
-                //lunar_log("help? %p\n", o)
+                //cyc_log("help? %p\n", o)
                 vkDestroyImageView( vkbDevice.device, o, nullptr );
             }
         });
 
-        lunar::attachment_info mainColorInfo;
+        cyc::attachment_info mainColorInfo;
         //1 sample, we won't be doing MSAA
         mainColorInfo.samples = VK_SAMPLE_COUNT_1_BIT;
         // we Clear when this attachment is loaded
@@ -212,15 +254,15 @@ int main()
         mainColorInfo.format = swapchain->image_format;
         
 
-        lunar::attachment_reference mainColorReference;
+        cyc::attachment_reference mainColorReference;
         mainColorReference.attachment = 0;
         mainColorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        lunar::subpass_description subpass;
+        cyc::subpass_description subpass;
         subpass.colorAttachmentCount = 1;
-        subpass.pipelineBindPoint = (VkPipelineBindPoint)LUNAR_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.pipelineBindPoint = (VkPipelineBindPoint)CYC_PIPELINE_BIND_POINT_GRAPHICS;
 
-        lunar::attachment_reference attachmentrefs[] = { mainColorReference };
+        cyc::attachment_reference attachmentrefs[] = { mainColorReference };
         subpass.pColorAttachments = attachmentrefs;
         subpass.inputAttachmentCount = NULL;
         subpass.pInputAttachments = NULL;
@@ -239,7 +281,7 @@ int main()
         dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         
-        lunar::renderpass_create_info renderPassInfo;
+        cyc::renderpass_create_info renderPassInfo;
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
         renderPassInfo.pNext = nullptr;
         
@@ -270,7 +312,7 @@ int main()
         
 
         const uint32_t swapchain_imagecount = swapchain->images.size();
-        //lunar_log( "swpchain image count %lu\n", swapchain->images.size() )
+        //cyc_log( "swpchain image count %lu\n", swapchain->images.size() )
         fmrbufs->resize(swapchain_imagecount);
         
         for ( int i = 0; i < swapchain_imagecount; ++i )
@@ -286,7 +328,7 @@ int main()
         }
     });
 
-    std::function<void(vector<lunar::frameData>)> waitAllFences([=](vector<lunar::frameData> Frames)
+    std::function<void(vector<cyc::frameData>)> waitAllFences([=](vector<cyc::frameData> Frames)
     {
         VkFence allfences[FRAME_OVERLAP];
         for( int i = 0; i < FRAME_OVERLAP; ++i )
@@ -297,23 +339,24 @@ int main()
     });
     swipychain(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
 
-    lunar_log( "Swapchain created in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds )
-    lunar::ResetStopwatch(&stopwatch);
+    cyc_log( "Swapchain created in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds )
+    cyc::ResetStopwatch(&stopwatch);
 
-    vector<lunar::frameData> frames ( FRAME_OVERLAP );
+    vector<cyc::frameData> frames ( FRAME_OVERLAP );
     VkFence uploadFence = {};
     VkCommandBuffer uploadCommandBuffer = {};
     VkCommandPool uploadCommandPool = {};
 
+    //==========================================SYNC OBJECTS CREATION===================================================
     {
         VkSemaphoreCreateInfo renderSemaphoreInfo = vkinit::semaphore_create_info();
         VkSemaphoreCreateInfo presentSemaphoreInfo = vkinit::semaphore_create_info();
 
         VkFenceCreateInfo fenceInfo = vkinit::fence_create_info( VK_FENCE_CREATE_SIGNALED_BIT );
-        VkCommandPoolCreateInfo cmdPoolInfo = vkinit::command_pool_create_info( (Uint32)LUNAR_QUEUETYPE_GRAPHICS, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT );
+        VkCommandPoolCreateInfo cmdPoolInfo = vkinit::command_pool_create_info( (Uint32)CYC_QUEUETYPE_GRAPHICS, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT );
 
         VkFenceCreateInfo uploadFenceInfo = vkinit::fence_create_info();
-        VkCommandPoolCreateInfo uploadCommandPoolInfo = vkinit::command_pool_create_info( (Uint32)LUNAR_QUEUETYPE_GRAPHICS );
+        VkCommandPoolCreateInfo uploadCommandPoolInfo = vkinit::command_pool_create_info( (Uint32)CYC_QUEUETYPE_GRAPHICS );
         VK_CHECK(vkCreateCommandPool( vkbDevice.device, &uploadCommandPoolInfo, nullptr, &uploadCommandPool ));
 
         VkCommandBufferAllocateInfo uploadCmdBufAllocInfo = vkinit::command_buffer_allocate_info( uploadCommandPool );
@@ -353,7 +396,7 @@ int main()
         
         //submit command buffer to the queue and execute it.
         // uploadFence will now block until the graphic commands finish execution
-        VK_CHECK(vkQueueSubmit( vkbDevice.get_queue((vkb::QueueType)LUNAR_QUEUETYPE_GRAPHICS).value(), 1, &submit, uploadFence ));
+        VK_CHECK(vkQueueSubmit( vkbDevice.get_queue((vkb::QueueType)CYC_QUEUETYPE_GRAPHICS).value(), 1, &submit, uploadFence ));
 
         //why am i so horny for dick?
         vkWaitForFences( vkbDevice.device, 1, &uploadFence, true, std::numeric_limits<Uint64>::max() );
@@ -365,6 +408,7 @@ int main()
 
     MasterDeletionQueue.push_back([=]()
     {
+        vmaDestroyAllocator( vmaAllocator );
         vkDestroyFence( vkbDevice.device, uploadFence, nullptr );
         vkDestroyCommandPool( vkbDevice.device, uploadCommandPool, nullptr );
         for( auto o : frames )
@@ -379,227 +423,293 @@ int main()
         SDL_DestroyWindow( mainwindow.sdl_handle );
         vkDestroySurfaceKHR( vkbInstance.instance, mainwindow.surface, nullptr );
         vkb::destroy_device( vkbDevice );
-        //lunar_log( "Destroyed vulkan (vkb) device :)\n" )
     });
 
     //Its about time to load those sexy shaders
-    vector<string> shadersToLoad = { "basicVert.spv", "basicFrag.spv" };
-    vector<VkShaderModule> shadersLoaded;
+    vector< cyc::Shader > Shaders;
 
-    //omg a pipeline *flush*
-    VkPipelineLayout trianglePipelineLayout;
-    VkPipeline trianglePipeline;
-    Uint8 FillType = 0;
-
-    lunar::Lambda< void > loadShaders([&]()
+    Lambda< vector<cyc::Shader>> LoadShaders([&]()
     {
-        runtime_status |= LUNAR_STATUS_SHADERLOAD;
-        for( auto o : shadersToLoad )
-        {
-            string nO = "shaders/" + o;
-            if( !lunar::DoesFileExist( nO ) )
-            {
-                lunar_log( "uh oh! shader %s doesnt exist\n", nO.c_str() )
-                runtime_status |= LUNAR_STATUS_QUIT;
-                break;
-            }
-            //lets get this bread i mean file, we want to load it with the cursor at the end and in binary
-            std::ifstream file( nO.c_str(), std::ios::ate | std::ios::binary );
-            if( !file.is_open() )
-            {
-                lunar_log( "uh oh! shader %s failed to load\n", nO.c_str() )
-                runtime_status |= LUNAR_STATUS_QUIT;
-                break;
-            }
-
-            //because we set the cursor at the end, we can get the size if the entire file
-            size_t fileSize = (size_t)file.tellg();
-            #ifdef SHADER_VERBOSE
-            lunar_log( "Loaded shader file %s, its size is %lu in bytes\n", o.c_str(), fileSize )
-            #endif
-
-            //why does vulkan expect the spirv code to be in Uint32? idk, but lets give it an array large enough
-            Uint32 buffer[fileSize / sizeof(Uint32)];
-
-            //set the cursor at the beginning for whatever reason
-            file.seekg( 0 );
-
-            //lets load this bitch!
-            file.read( (char*)buffer, fileSize );
-
-            //were done with the file, so we can unload it
-            file.close();
-
-            auto moduleCreateInfo = vkinit::shader_module_create_info( );
-
-            moduleCreateInfo.pCode = buffer;
-            moduleCreateInfo.codeSize = fileSize;
-
-            VkShaderModule Module;
-            VK_CHECK(vkCreateShaderModule( vkbDevice.device, &moduleCreateInfo, nullptr, &Module ));
-            shadersLoaded.push_back( Module );
-            //lunar_log( "our good friend %p\n", Module );
-            #ifdef SHADER_VERBOSE
-            lunar_log( "Created shader module %p\n", Module )
-            #endif
-
-            ShaderDeletionQueue.push_back([=]()
-            {
-                vkDestroyShaderModule( vkbDevice.device, Module, nullptr );
-                #ifdef SHADER_VERBOSE
-                lunar_log( "Destroyed shader module %p\n", Module )
-                #endif
-            });
-        }
-        runtime_status &= LUNAR_STATUS_SHADERLOAD;
-    });
-    loadShaders();
-    
-    lunar_log("Shader modules created in %0.1fms\n", lunar::CheckStopwatch( stopwatch ).result.milliseconds)
-    lunar::ResetStopwatch( &stopwatch );
-    
-    //TODO: allow switching from fill mode to line mode using F8
-    lunar::Lambda< void, vector<VkShaderModule>, VkPipelineLayout*, VkPipeline* > createPipelines( [&]( vector<VkShaderModule> shaders, VkPipelineLayout* pipelineLayout, VkPipeline *pipeline )
-    {
-        //first, as per the standard, lets get the pipeline layout ready for use
-        auto pipelineLayoutInfo = vkinit::pipeline_layout_create_info();
-        VK_CHECK(vkCreatePipelineLayout( vkbDevice.device, &pipelineLayoutInfo, nullptr, pipelineLayout ));
-
-        //Im getting turned on already! lets put those throbing shader modules to use~
-        auto basicVert = shadersLoaded[0];
-        auto basicFrag = shadersLoaded[1];
-
-        //lets build this cock! (what am i even saying)
-        lunar::PipelineBuilder PipelineBuilder;
-
-        //we need to give our pipeline our shaders to work, obviously
-        PipelineBuilder._shaderStages.push_back(
-            vkinit::pipeline_shader_stage_create_info( VK_SHADER_STAGE_VERTEX_BIT, basicVert )
-        );
-        PipelineBuilder._shaderStages.push_back(
-            vkinit::pipeline_shader_stage_create_info( VK_SHADER_STAGE_FRAGMENT_BIT, basicFrag )
-        );
-
-        auto vertDesc = lunar::Vertex::GetVertexDescription();
-        PipelineBuilder._vertexInputInfo = vkinit::vertex_input_state_create_info();
-
-        PipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertDesc.attribs.data();
-        PipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = vertDesc.attribs.size();
-
-        PipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertDesc.bindings.data();
-        PipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = vertDesc.bindings.size();
-        
-
-        //lets set its girthyness
-        PipelineBuilder._viewport.x = 0.0f;
-        PipelineBuilder._viewport.y = 0.0f;
-        PipelineBuilder._viewport.width = (float)mainwindow.size.width;
-        PipelineBuilder._viewport.height = (float)mainwindow.size.height;
-        PipelineBuilder._viewport.minDepth = 0.0f;
-        PipelineBuilder._viewport.maxDepth = 1.0f;
-
-        PipelineBuilder._scissor.offset = { 0, 0 };
-        PipelineBuilder._scissor.extent = mainwindow.size;
-
-        //input assembly is the configuration for drawing triangle lists, strips, or individual points.
-	    //we are just going to draw triangle list
-        PipelineBuilder._inputAssembly = vkinit::input_assembly_create_info( VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST );
-
-        //configure the rasterizer to draw filled triangles
-        PipelineBuilder._rasterizer = vkinit::rasterization_state_create_info( (VkPolygonMode)FillType, 1.f );
-
-        //we don't use multisampling, so just run the default one
-        PipelineBuilder._multisampling = vkinit::multisampling_state_create_info();
-
-        //a single blend attachment with no blending and writing to RGBA
-        PipelineBuilder._colorBlendAttachment = vkinit::color_blend_attachment_state();
-
-        //default depthtesting
-        //PipelineBuilder._depthStencil = vkinit::depth_stencil_create_info(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-
-        //now, we finally give the pipeline our layout. then we build it
-        PipelineBuilder._pipelineLayout = trianglePipelineLayout;
-        *pipeline = PipelineBuilder.build_pipeline( vkbDevice.device, renderPass );
+        cyc::StopWatch exec;
+        cyc::StartStopwatch( &exec );
+        vector< cyc::Shader > shaders;
+        auto lines = cyc::GetLines( "cfg/shaderload.txt" ).result;
         #ifdef SHADER_VERBOSE
-        lunar_log( "New pipeline %p\n", *pipeline )
-        lunar_log( "Pipeline layout %p is attributed with pipeline %p\n", *pipelineLayout, *pipeline )
+        cyc_log( "Shader load file has been loaded, it has a line count of %i\n", int( lines.size() ) )
         #endif
-        ShaderDeletionQueue.push_back([=]()
+
+        for ( size_t i = 0; i < lines.size(); ++i )
         {
-            vkDestroyPipelineLayout( vkbDevice.device, *pipelineLayout, nullptr );
-            vkDestroyPipeline( vkbDevice.device, *pipeline, nullptr );
-            #ifdef SHADER_VERBOSE
-            lunar_log( "Destroyed pipeline layout %p\n", *pipelineLayout )
-            lunar_log( "Destroyed pipeline %p\n", *pipeline )
-            #endif
-        });
+            cyc::Shader tShader = {};
+            if ( lines[ i ]._Starts_with( "#MESH" ) )
+            {
+                #ifdef SHADER_VERBOSE
+                cyc_log( "Graphics shader found\nName: %s\nFill mode: %i\nVert shader: %s\nFrag shader: %s\n\n", lines[ i + 1 ].substr( 6 ).c_str(),
+                    std::stoi( lines[ i + 2 ].substr( 6 )),
+                    lines[ i + 3 ].substr( 8 ).c_str(),
+                    lines[ i + 4 ].substr( 10 ).c_str() );
+                #endif
+
+                tShader.Name = lines[ i + 1 ].substr( 6 );
+                tShader.Type = CYC_SHADER_GRAPHICS_MESH;
+                tShader.FillMode = std::stoi( lines[ i + 2 ].substr( 6 ) );
+                tShader.VertShader = lines[ i + 3 ].substr( 8 );
+                tShader.FragShader = lines[ i + 4 ].substr( 10 );
+
+                i += 4;
+                shaders.push_back( tShader );
+            }
+            else if ( lines[ i ]._Starts_with( "#COMPUTE" ) )
+            {
+                #ifdef SHADER_VERBOSE
+                cyc_log( "Compute shader found\nName: %s\nComp shader: %s\n\n", lines[ i + 1 ].substr( 6 ).c_str(), 
+                    lines[ i + 2 ].substr( 8 ).c_str() );
+                #endif
+
+                tShader.Name = lines[ i + 1 ].substr( 6 );
+                tShader.CompShader = lines[ i + 2 ].substr( 8 );
+
+                i += 2;
+                shaders.push_back( tShader );
+            }
+        }
+        #ifdef SHADER_VERBOSE
+        printf( "Shader loading complete. %i shaders loaded\n", int( shaders.size() ));
+        #endif
+
+        for ( int i = 0; i < shaders.size(); ++i )
+        {
+            auto o = &shaders[ i ];
+            
+            if ( o->Type == CYC_SHADER_GRAPHICS_MESH )
+            {
+                vector< string > shadload = { o->VertShader, o->FragShader };
+                runtime_status |= CYC_STATUS_SHADERLOAD;
+                for( auto u : shadload )
+                {
+                    string nO = "shaders/" + u;
+                    if( !cyc::DoesFileExist( nO ) )
+                    {
+                        cyc_log( "uh oh! shader %s doesnt exist\n", nO.c_str() )
+                        runtime_status |= CYC_STATUS_QUIT;
+                        break;
+                    }
+                    //lets get this bread i mean file, we want to load it with the cursor at the end and in binary
+                    std::ifstream file( nO.c_str(), std::ios::ate | std::ios::binary );
+                    if( !file.is_open() )
+                    {
+                        cyc_log( "uh oh! shader %s failed to load\n", nO.c_str() )
+                        runtime_status |= CYC_STATUS_QUIT;
+                        break;
+                    }
+
+                    //because we set the cursor at the end, we can get the size if the entire file
+                    size_t fileSize = (size_t)file.tellg();
+                    #ifdef SHADER_VERBOSE
+                    cyc_log( "Loaded shader file %s, its size is %lu in bytes\n", u.c_str(), fileSize )
+                    #endif
+
+                    //why does vulkan expect the spirv code to be in Uint32? idk, but lets give it an array large enough
+                    Uint32 buffer[fileSize / sizeof(Uint32)];
+
+                    //set the cursor at the beginning for whatever reason
+                    file.seekg( 0 );
+
+                    //lets load this bitch!
+                    file.read( (char*)buffer, fileSize );
+
+                    //were done with the file, so we can unload it
+                    file.close();
+
+                    auto moduleCreateInfo = vkinit::shader_module_create_info( );
+
+                    moduleCreateInfo.pCode = buffer;
+                    moduleCreateInfo.codeSize = fileSize;
+
+                    VkShaderModule Module;
+                    VK_CHECK(vkCreateShaderModule( vkbDevice.device, &moduleCreateInfo, nullptr, &Module ));
+                    o->ShaderModules.push_back( Module );
+                    #ifdef SHADER_VERBOSE
+                    cyc_log( "Created shader module %p\n", Module )
+                    #endif
+
+                    o->Deletion.push_back([=]()
+                    {
+                        vkDestroyShaderModule( vkbDevice.device, Module, nullptr );
+                        #ifdef SHADER_VERBOSE
+                        cyc_log( "Destroyed shader module %p\n", Module )
+                        #endif
+                    });
+                }
+                {
+                    //first, as per the standard, lets get the pipeline layout ready for use
+                    auto pipelineLayoutInfo = vkinit::pipeline_layout_create_info();
+
+                    //create our cock i mean mesh constant
+                    VkPushConstantRange meshPushConst{};
+                    //this push constant range starts at the beginning
+                    meshPushConst.offset = 0;
+                    //this push constant range takes up the size of a MeshPushConstant struct
+                    meshPushConst.size = sizeof( cyc::MeshPushConstant );
+                    //this push constant range is accessible only in the vertex shader
+                    meshPushConst.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+                    pipelineLayoutInfo.pPushConstantRanges = &meshPushConst;
+                    pipelineLayoutInfo.pushConstantRangeCount = 1;
+
+                    //HELP ME!
+                    VK_CHECK(vkCreatePipelineLayout( vkbDevice.device, &pipelineLayoutInfo, nullptr, &o->PipelineLayout ));
+                    #ifdef SHADER_VERBOSE
+                    cyc_log( "Created pipeline layout %p\n", o->PipelineLayout )
+                    #endif
+
+                    //Im getting turned on already! lets put those throbing shader modules to use~
+                    auto basicVert = o->ShaderModules[0];
+                    auto basicFrag = o->ShaderModules[1];
+
+                    //lets build this cock! (what am i even saying)
+                    cyc::PipelineBuilder PipelineBuilder;
+
+                    //we need to give our pipeline our shaders to work, obviously
+                    PipelineBuilder._shaderStages.push_back(
+                        vkinit::pipeline_shader_stage_create_info( VK_SHADER_STAGE_VERTEX_BIT, basicVert )
+                    );
+                    PipelineBuilder._shaderStages.push_back(
+                        vkinit::pipeline_shader_stage_create_info( VK_SHADER_STAGE_FRAGMENT_BIT, basicFrag )
+                    );
+
+                    auto vertDesc = cyc::Vertex::GetVertexDescription();
+                    PipelineBuilder._vertexInputInfo = vkinit::vertex_input_state_create_info();
+
+                    PipelineBuilder._vertexInputInfo.pVertexAttributeDescriptions = vertDesc.attribs.data();
+                    PipelineBuilder._vertexInputInfo.vertexAttributeDescriptionCount = vertDesc.attribs.size();
+
+                    PipelineBuilder._vertexInputInfo.pVertexBindingDescriptions = vertDesc.bindings.data();
+                    PipelineBuilder._vertexInputInfo.vertexBindingDescriptionCount = vertDesc.bindings.size();
+                    
+
+                    //lets set its girthyness
+                    PipelineBuilder._viewport.x = 0.0f;
+                    PipelineBuilder._viewport.y = 0.0f;
+                    PipelineBuilder._viewport.width = (float)mainwindow.size.width;
+                    PipelineBuilder._viewport.height = (float)mainwindow.size.height;
+                    PipelineBuilder._viewport.minDepth = 0.0f;
+                    PipelineBuilder._viewport.maxDepth = 1.0f;
+
+                    PipelineBuilder._scissor.offset = { 0, 0 };
+                    PipelineBuilder._scissor.extent = mainwindow.size;
+
+                    //input assembly is the configuration for drawing triangle lists, strips, or individual points.
+                    //we are just going to draw triangle list
+                    PipelineBuilder._inputAssembly = vkinit::input_assembly_create_info( VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST );
+
+                    //configure the rasterizer to draw filled triangles
+                    PipelineBuilder._rasterizer = vkinit::rasterization_state_create_info( VkPolygonMode( o->FillMode ), 1.f );
+
+                    //we don't use multisampling, so just run the default one
+                    PipelineBuilder._multisampling = vkinit::multisampling_state_create_info();
+
+                    //a single blend attachment with no blending and writing to RGBA
+                    PipelineBuilder._colorBlendAttachment = vkinit::color_blend_attachment_state();
+
+                    //default depthtesting
+                    //PipelineBuilder._depthStencil = vkinit::depth_stencil_create_info(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
+                    #ifdef SHADER_VERBOSE
+                    cyc_log( "Finished filling out pipeline builder %p\n", &PipelineBuilder )
+                    #endif
+                    //now, we finally give the pipeline our layout. then we build it
+                    PipelineBuilder._pipelineLayout = o->PipelineLayout;
+                    o->Pipeline = PipelineBuilder.build_pipeline( vkbDevice.device, renderPass );
+                    #ifdef SHADER_VERBOSE
+                    cyc_log( "New pipeline %p\n", o->Pipeline )
+                    cyc_log( "Pipeline layout %p is attributed with pipeline %p\n", o->PipelineLayout, o->Pipeline )
+                    #endif
+                    o->Deletion.push_back([=]()
+                    {
+                        vkDestroyPipelineLayout( vkbDevice.device, o->PipelineLayout, nullptr );
+                        vkDestroyPipeline( vkbDevice.device, o->Pipeline, nullptr );
+                        #ifdef SHADER_VERBOSE
+                        cyc_log( "Destroyed pipeline layout %p\n", o->PipelineLayout )
+                        cyc_log( "Destroyed pipeline %p\n", o->Pipeline )
+                        #endif
+                    });
+                }
+                runtime_status |= CYC_STATUS_SHADERLOAD;
+            }
+        }
+        #ifdef SHADER_VERBOSE
+        cyc_log( "%i Shaders built, build time was %0.1fms\n", int( shaders.size() ), cyc::CheckStopwatch( exec ).result.milliseconds )
+        #endif
+        return shaders;
     });
 
-    Lambda< void > reloadShaders([&]()
+    Shaders = LoadShaders();
+
+    //createPipelines( shadersLoaded, &ColorFillPipelineLayout, &ColorFillPipeline );
+    //cyc_log( "Pipelines created in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds )
+    //cyc::ResetStopwatch( &stopwatch );
+
+    if( !cyc::DoesFileExist( "cfg/meshload.txt" ))
+    {
+        cyc::WriteFile( "cfg/meshload.txt", "" );
+    }
+    vector< string > meshesToLoad; 
+    vector< cyc::Mesh > meshes;
+
+    NoWait([&]()
+    {
+        meshesToLoad = cyc::GetLines( "cfg/meshload.txt" ).result;
+        meshes = cyc::LoadMeshes( meshesToLoad ).result;
+        cyc::UploadMeshes( &meshes, vmaAllocator, &MeshDeletionQueue );
+    });   
+
+    auto reloadMeshes([&]( vector<string> *oldMeshesToLoad, vector<cyc::Mesh> *oldMeshes )
     {
         waitAllFences( frames );
-        lunar::RqueueUse( ShaderDeletionQueue );
-        ShaderDeletionQueue.clear();
-        shadersLoaded.clear();
+        cyc::RqueueUse( MeshDeletionQueue );
+        MeshDeletionQueue.clear();
+        oldMeshesToLoad->clear();
+        oldMeshes->clear();
 
-        loadShaders();
-        createPipelines( shadersLoaded, &trianglePipelineLayout, &trianglePipeline );
-        #ifdef SHADER_VERBOSE
-        lunar_log("Reloaded shaders\n")
-        #endif
+        NoWait([=]()
+        {
+            *oldMeshesToLoad = cyc::GetLines( "cfg/meshload.txt" ).result;
+            *oldMeshes = cyc::LoadMeshes( *oldMeshesToLoad ).result;
+            cyc::UploadMeshes( oldMeshes, vmaAllocator, &MeshDeletionQueue );
+        });
+
+        cyc_log( "Meshes size %lu\n", oldMeshes->size() )
+        for( auto o : *oldMeshes )
+        {
+            cyc_log( "triangle size %lu\n", o.vertices.size() / 3 )
+        }
     });
-
-    createPipelines( shadersLoaded, &trianglePipelineLayout, &trianglePipeline );
-    lunar_log( "Pipelines created in %0.1fms\n", lunar::CheckStopwatch(stopwatch).result.milliseconds )
-    lunar::ResetStopwatch( &stopwatch );
-
-    vector< lunar::Mesh > meshes = lunar::LoadMeshes( { "assets/tri.mesh "} ).result;
-    lunar::UploadMeshes( &meshes, vmaAllocator, &MeshDeletionQueue );
     
-    lunar_log( "Beginning runtime, init sequence took %0.1fms\n\n", lunar::CheckStopwatch(starting_time).result.milliseconds )
+    cyc_log( "Beginning runtime, init sequence took %0.1fms\n\n", cyc::CheckStopwatch(starting_time).result.milliseconds )
 
     //================================RUNTIME====================================
     std::unordered_map<string, bool> windowthings;
     array< bool, 83 > keys = { false };
-    array< bool, 83 > keysCpy = { false };
+    auto keysCpy = keys;
     array< bool, 83 > keysPulse = { false };
+    cyc::Mouse mouse;
 
+    cyc::Camera Cam;
+    Cam.pos = { 0.f, 0.f, -4.f };
 
     SDL_Event e;
-    while ( !lunar::CompareFlags(runtime_status, LUNAR_STATUS_QUIT) )
+    while ( !cyc::CompareFlags(runtime_status, CYC_STATUS_QUIT) )
     {
         keysPulse = { false };
+        mouse.pulse = { false };
+        mouse.hold[ 3 ] = false; mouse.hold[ 4 ] = false;
+        mouse.velocity = { 0.f, 0.f };
+        glm::vec2 MovementInputs = { 0.f, 0.f };
 
-        lunar::StopWatch frameDelta;
-        lunar::StartStopwatch(&frameDelta);
+        cyc::StopWatch frameDelta;
+        cyc::StartStopwatch(&frameDelta);
         while(SDL_PollEvent(&e) != 0)
         {
-            if (e.type == SDL_QUIT)
-            {
-                runtime_status |= LUNAR_STATUS_QUIT;
-                break;
-            }
-            switch( e.button.button )
-            {
-                case SDL_BUTTON_LEFT:
-                    if( e.type == SDL_MOUSEBUTTONDOWN )
-                    {
-                        windowthings["Left mouse"] = true;
-                        windowthings["Left mouse pulse"] = true;
-                    }
-                    else if( e.type == SDL_MOUSEBUTTONUP )
-                        windowthings["Left mouse"] = false;
-                break;
-                case SDL_BUTTON_RIGHT:
-                    if( e.type == SDL_MOUSEBUTTONDOWN )
-                    {
-                        windowthings["Right mouse"] = true;
-                        windowthings["Right mouse pulse"] = true;
-                    }
-                    else if( e.type == SDL_MOUSEBUTTONUP )
-                    windowthings["Right mouse"] = false;
-                break;
-            }
             switch( e.type )
             {
                 case SDL_KEYDOWN:
@@ -778,43 +888,160 @@ int main()
                     case SDLK_F15 : keys[ 82 ] = false; break;
                 }
                 break;
+                case SDL_MOUSEBUTTONDOWN:
+                switch( e.button.button )
+                {
+                    case SDL_BUTTON_LEFT: mouse.hold[ 0 ] = true; break;
+                    case SDL_BUTTON_RIGHT: mouse.hold[ 1 ] = true; break;
+                    case SDL_BUTTON_MIDDLE: mouse.hold[ 2 ] = true; break;
+                }
+                break;
+                case SDL_MOUSEBUTTONUP:
+                switch( e.button.button )
+                {
+                    case SDL_BUTTON_LEFT: mouse.hold[ 0 ] = false; break;
+                    case SDL_BUTTON_RIGHT: mouse.hold[ 1 ] = false; break;
+                    case SDL_BUTTON_MIDDLE: mouse.hold[ 2 ] = false; break;
+                }
+                break;
+                case SDL_MOUSEWHEEL:
+                if( e.wheel.y > 0 )
+                {
+                    mouse.hold[ CYCM_WHEELUP ] = true;
+                } 
+                else if( e.wheel.y < 0 )
+                {
+                    mouse.hold[ CYCM_WHEELDOWN ] = true;
+                }
+                break;
+                case SDL_MOUSEMOTION:
+                mouse.velocity = { e.motion.xrel, e.motion.yrel };
+                break;
             }
             switch( e.window.event )
             {
                 case SDL_WINDOWEVENT_MINIMIZED:
-                    //lunar_log( "Window minimized\n" );
-                    while ( lunar::CompareFlags( SDL_GetWindowFlags( mainwindow.sdl_handle ), SDL_WINDOW_MINIMIZED ))
+                    //cyc_log( "Window minimized\n" );
+                    while ( cyc::CompareFlags( SDL_GetWindowFlags( mainwindow.sdl_handle ), SDL_WINDOW_MINIMIZED ))
                     {
                         SDL_PollEvent( &e );
-                        lunar::WaitMS( 5 );
+                        cyc::WaitMS( 5 );
                     }
                 break;
                 case SDL_WINDOWEVENT_RESIZED:
                     waitAllFences( frames );
                     mainwindow.size.width = e.window.data1;
                     mainwindow.size.height = e.window.data2;
-                    lunar::RqueueUse( SwapchainDeletionQueue );
+                    cyc::RqueueUse( SwapchainDeletionQueue );
                     SwapchainDeletionQueue.clear();
+                    cyc::RCqueueUse( &Shaders[ 0 ].Deletion );
+
 
                     (swipychain)(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
-                    reloadShaders();
+                    Shaders = LoadShaders();
+                break;
+            }
+            if ( e.type == SDL_QUIT )//&& !( keys[ CYCK_LALT ] && keys[ CYCK_F4 ] ) )
+            {
+                runtime_status |= CYC_STATUS_QUIT;
+                break;
             }
         }
         //=======================================LOGIC===========================================
-        //lunar::CheckStopwatch(frame_delta).result.milliseconds;
+        //cyc::CheckStopwatch(frame_delta).result.milliseconds;
+        float MovementScalar = .8f;
         for( int i = 0; i < keys.size(); ++i )
         {
             keysPulse[ i ] = keys[ i ] && !keysCpy[ i ];
         }
-
-        if( keysPulse[ LUNARK_F8 ] )
+        for( int i = 0; i < mouse.hold.size(); ++i )
         {
-            reloadShaders();
+            mouse.pulse[ i ] = mouse.hold[ i ] && !mouse.holdCpy[ i ];
         }
-        if( keysPulse[ LUNARK_F3 ] )
+
+        if( keysPulse[ CYCK_F8 ] )
         {
-            FillType = !FillType;
-            reloadShaders();
+            waitAllFences( frames );
+            cyc::RqueueUse( SwapchainDeletionQueue );
+            SwapchainDeletionQueue.clear();
+            cyc::RCqueueUse( &Shaders[ 0 ].Deletion );
+
+            (swipychain)(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
+            Shaders = LoadShaders();
+        }
+        else if( keysPulse[ CYCK_F3 ] )
+        {
+            waitAllFences( frames );
+            cyc::RqueueUse( SwapchainDeletionQueue );
+            SwapchainDeletionQueue.clear();
+            cyc::RCqueueUse( &Shaders[ 0 ].Deletion );
+
+            (swipychain)(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
+            Shaders = LoadShaders();
+        }
+        else if( keysPulse[ CYCK_F4 ] )
+        {
+            reloadMeshes( &meshesToLoad, &meshes );
+        }
+
+        if( mouse.hold[ CYCM_WHEELUP ] )
+        {
+            Cam.pos.z += .8f;
+        }
+        else if( mouse.hold[ CYCM_WHEELDOWN ] )
+        {
+            Cam.pos.z -= .8f;
+        }
+
+        //if( mouse.hold[ CYCM_RIGHT ] && keys[ CYCK_LCTRL] && ( mouse.velocity.x > 1 | mouse.velocity.x < -1 ) )
+        //{
+        //    Cam.pos.z += mouse.velocity.x / 30.f;
+        //}
+        if( mouse.hold[ CYCM_MIDDLE ] )
+        {
+            Cam.pos.y += mouse.velocity.y / 40.f;
+            //Cam.orbit += mouse.velocity.x / 2.f;
+        }
+        if( mouse.hold[ CYCM_RIGHT ] )
+        {
+            //SDL_ShowCursor( SDL_FALSE );
+            //SDL_SetWindowGrab( mainwindow.sdl_handle, SDL_TRUE );
+            Cam.rotation.x += mouse.velocity.x / 5.f;
+            Cam.rotation.y += mouse.velocity.y / 5.f;
+            //SDL_WarpMouseInWindow( mainwindow.sdl_handle, mainwindow.size.width/2, mainwindow.size.height/2 );
+        }
+        else
+        {
+            //SDL_ShowCursor( SDL_TRUE );
+            //SDL_SetWindowGrab( mainwindow.sdl_handle, SDL_FALSE );
+        }
+        if( Cam.rotation.y > 89.f )
+        {
+            Cam.rotation.y = 89.f;
+        }
+        else if( Cam.rotation.y < -89.f )
+        {
+            Cam.rotation.y = -89.f;
+        }
+
+        if( keys[ CYCK_LCTRL ] )
+            MovementScalar = 0.2f;
+
+        if( keys[ CYCK_W ] )
+        {
+            MovementInputs.x += 1.f * MovementScalar;
+        }
+        if( keys[ CYCK_S ] )
+        {
+            MovementInputs.x -= 1.f * MovementScalar;
+        }
+        if( keys[ CYCK_D ] )
+        {
+            MovementInputs.y += 1.f * MovementScalar;
+        }
+        if( keys[ CYCK_A ] )
+        {
+            MovementInputs.y -= 1.f * MovementScalar;
         }
         //=====================================RENDERING=========================================
         #if 1
@@ -841,11 +1068,6 @@ int main()
 
         VkClearValue clearColor;
         glm::vec4 rgba = { .2f, .2f, .2f, 1.f };
-        if( (*windowthings.find("Left mouse")).second )
-            rgba.r += .3f;
-
-        if( (*windowthings.find("Right mouse")).second )
-            rgba.b += .3f;
 
         clearColor.color = { rgba.r, rgba.g, rgba.b, rgba.a };
 
@@ -861,23 +1083,58 @@ int main()
 
         //Now that weve given the renderpass to the cmd buffer we can now begin giving commands!
         //=====================================RENDERPASS STARTS HERE IDIOT========================================
+        auto ColorFillPipe = Shaders[ 0 ].Pipeline;
+        auto ColorFillPipeLayout = Shaders[ 0 ].PipelineLayout;
 
         //lets see if it works (it probably wont lmao)
         //first we bind the pipeline to the command buffer, of course its a graphics type, so lets specify
-        vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline );
+        vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ColorFillPipe );
+        
+        //make a model view matrix for rendering the object
+        using glm::radians; using glm::vec3;
 
-        //time to bind this massive dong i mean triangle why am i so horny
-        
-        
+        Cam.pos += glm::vec3( MovementInputs.x * -sin(radians(Cam.rotation.x)) * cos(radians(Cam.rotation.y)) + MovementInputs.y * -cos(radians(Cam.rotation.x)),
+            MovementInputs.x * -sin(radians(Cam.rotation.y)),
+            MovementInputs.x * cos(radians(Cam.rotation.x)) * cos(radians(Cam.rotation.y)) + MovementInputs.y * -sin(radians(Cam.rotation.x)) );
+
+        glm::mat4 view = glm::lookAt( Cam.pos, Cam.pos + glm::vec3(-sin(radians(Cam.rotation.x)) * cos(radians(Cam.rotation.y)),
+            -sin(radians(Cam.rotation.y)),
+            cos(radians(Cam.rotation.x) ) * cos(radians(Cam.rotation.y) )),
+            glm::vec3(-sin(radians(Cam.rotation.x)) * sin(radians(Cam.rotation.y)),
+                cos(radians(Cam.rotation.y)),
+                cos(radians(Cam.rotation.x)) * sin(radians(Cam.rotation.y)) ));
+
+        //camera projection
+        glm::mat4 projection = glm::perspective(radians(Cam.FOV), (float)mainwindow.size.width / (float)mainwindow.size.height, Cam.cuttof.x, Cam.cuttof.y);
+        projection[1][1] *= -1;
+
         for( int i = 0; i < meshes.size(); ++i )
         {
             VkBuffer buf = meshes[ i ]._vertexBuffer._buffer;
             VkDeviceSize offset = 0;
+            //time to bind this massive dong i mean triangle why am i so horny
             vkCmdBindVertexBuffers( cmd, 0, 1, &buf, &offset );
+            float pi = 3.141592654f;
+
+            //model translation
+            glm::mat4 model = glm::translate( glm::mat4( 1.f ), -meshes[ i ].position );
+
+            model = glm::rotate( model, meshes[ i ].rotation.x*pi/2, vec3( 1.f, 0.f, 0.f ));
+            model = glm::rotate( model, meshes[ i ].rotation.y*pi/2, vec3( 0.f, 1.f, 0.f ));
+            model = glm::rotate( model, meshes[ i ].rotation.z*pi/2, vec3( 0.f, 0.f, 1.f ));
+            //model scale
+            model = glm::scale( model, meshes[ i ].scale );
+            
+            //calculate final mesh matrix
+            glm::mat4 mesh_matrix = projection * view * model;
+
+            cyc::MeshPushConstant constants;
+            constants.renderMatrix = mesh_matrix;
+
+            vkCmdPushConstants( cmd, ColorFillPipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof( cyc::MeshPushConstant ), &constants );
 
             vkCmdDraw( cmd, meshes[ i ].vertices.size(), 1, 0, i );
         }
-        
 
         //======================================RENDERPASS ENDS HERE IDIOT=========================================
         vkCmdEndRenderPass( cmd );
@@ -897,10 +1154,10 @@ int main()
         submitInfo.pWaitDstStageMask = &waitStage;
 
         //We now have our submit info, so lets submit our command buffer to the queue and execute it, it will then block the render semaphore, sexy
-        VkQueue Queue = vkbDevice.get_queue((vkb::QueueType)LUNAR_QUEUETYPE_GRAPHICS).value();
+        VkQueue Queue = vkbDevice.get_queue((vkb::QueueType)CYC_QUEUETYPE_GRAPHICS).value();
 
         VK_CHECK(vkQueueSubmit( Queue, 1, &submitInfo, curFrame->render_fence ));
-        //lunar_log("uhhh %p\n", renderPass)
+        //cyc_log("uhhh %p\n", renderPass)
 
         //Lets present this bitch, we have our rendered stuff, so we can now present it to the swapchain, hope it likes it...
         VkPresentInfoKHR presentInfo = vkinit::present_info();
@@ -917,12 +1174,13 @@ int main()
         //Lets finally present our image! Show them what a gaping hole we left~ lmao
         VK_CHECK(vkQueuePresentKHR( Queue, &presentInfo ));
 
-        //lunar::CheckStopwatch(frameDelta).result.milliseconds;
+        //cyc::CheckStopwatch(frameDelta).result.milliseconds;
         keysCpy = keys;
+        mouse.holdCpy = mouse.hold;
 
         ++FRAME_NUMBER;
         #else
-        lunar::WaitMS(17);
+        cyc::WaitMS(17);
         #endif
     }
 
@@ -934,14 +1192,14 @@ int main()
     
     //============================END OF RUNTIME=================================
     
-    lunar_log( "Lunarge is shutting down... code = %lu\n", runtime_status )
-    lunar_log( "Runtime duration was %0.2f minutes\n", lunar::CheckStopwatch(stopwatch).result.minutes )
+    cyc_log( "Lunarge is shutting down... code = %lu\n", runtime_status )
+    cyc_log( "Runtime duration was %0.2f minutes\n", cyc::CheckStopwatch(stopwatch).result.minutes )
 
     waitAllFences( frames );
 
-    lunar::RqueueUse( MeshDeletionQueue );
+    cyc::RqueueUse( MeshDeletionQueue );
     
-    lunar::RqueueUse( SwapchainDeletionQueue );
+    cyc::RqueueUse( SwapchainDeletionQueue );
     vkDestroySwapchainKHR( vkbDevice.device, swpchain.swapchain, nullptr );
 
     int w, h;
@@ -950,10 +1208,11 @@ int main()
 
     SDL_GetWindowPosition( mainwindow.sdl_handle, &w, &h );
     wh += string_format( "%i\n%i\n%s", w, h, config[4].c_str() );
-    lunar::WriteFile( "config.txt", wh );
+    cyc::WriteFile( "cfg/config.txt", wh );
     
-    lunar::RqueueUse( ShaderDeletionQueue );
-    lunar::RqueueUse( MasterDeletionQueue );
+    cyc::RCqueueUse( &Shaders[ 0 ].Deletion );
+
+    cyc::RqueueUse( MasterDeletionQueue );
     
     SDL_Quit();
 
