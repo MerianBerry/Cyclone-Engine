@@ -1,6 +1,6 @@
 # Cyclone Documentation
 
-This file will include the entirety of the documentation for Lunar because I don't want to make a website for this.
+This file will include the entirety of the documentation for the engine because I don't want to make a website for this.
 
 ### *Contents*
 
