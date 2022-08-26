@@ -44,7 +44,7 @@ function Render()
     print( "I am rendering!" )
 end
 ```
-This lua script, when used by the engine, will print "I am updating!" during logic updating, and "I am rendering!" during the renderpass.
+This lua script, when used by the engine, will print ``"I am updating!"`` during logic updating, and ``"I am rendering!"`` during the renderpass.
 
 ```lua
 -- LUA, NOTE: Cyclone.lua isnt updated to point yet
@@ -59,8 +59,9 @@ function Update()
     end
 end
 ```
-When used by the engine, this script will print ``You killed jim!`` when the left mouse button is pressed, and will print ``And ill do it again`` when
+When used by the engine, this script will print ``"You killed jim!"`` when the left mouse button is pressed, and will print ``"And ill do it again"`` when
 the mouse wheel gets moved up OR down
+
 
 ## Libraries and API's
 ![Vulkan](docs/Vulkan_100px_Dec16.png)
@@ -69,3 +70,4 @@ the mouse wheel gets moved up OR down
 - [VMA *Vulkan Memory Allocator*](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
 - [VkBootstrap](https://github.com/charles-lunarg/vk-bootstrap)
 - [glm](https://github.com/g-truc/glm)
+- [Lua binaries](http://luabinaries.sourceforge.net)
