@@ -10,8 +10,8 @@ Cyclone (Game engine / Graphics Engine) is a heavy in-development light-ish weig
 
 1. [Structure](#structure)
 2. [Code Examples](#code-examples)
-3. [Current focus/progress](#current-focus/progress)
-4. [Libraries, Binaries and API's](#libraries,-binaries-and-apis)
+3. [Current focus/progress](#current-focusprogress)
+4. [Libraries, Binaries and API's](#libraries-binaries-and-apis)
 
 ## Structure
 
