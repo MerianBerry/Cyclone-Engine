@@ -46,6 +46,22 @@ end
 ```
 This lua script, when used by the engine, will print "I am updating!" during logic updating, and "I am rendering!" during the renderpass.
 
+```lua
+-- LUA, NOTE: Cyclone.lua isnt updated to point yet
+cyc = require "Cyclone
+
+function Update()
+    if cyc.GetButtonState "M_LEFT" then
+        print "You killed jim!"
+    end
+    if cyc.GetButtonState( "M_WHEELUP", "hold" ) or cyc.getButtonState( "M_WHEELDOWN", "hold" ) then
+        print "And ill do it again"
+    end
+end
+```
+When used by the engine, this script will print ``You killed jim!`` when the left mouse button is pressed, and will print ``And ill do it again`` when
+the mouse wheel gets moved up OR down
+
 ## Libraries and API's
 ![Vulkan](docs/Vulkan_100px_Dec16.png)
 - [Vulkan 1.3](https://www.vulkan.org/)
