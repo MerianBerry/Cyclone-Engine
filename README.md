@@ -1,17 +1,17 @@
-# What is Lunar?
-LunarGE (Game engine / Graphics Engine) is a heavy in-development light-ish weight engine written in c++, and uses the Vulkan graphics api. *Planned* supported scripting languages are Lua and python. But I am looking into supporting Java and C#.
+# What is Cyclone?
+Cyclone (Game engine / Graphics Engine) is a heavy in-development light-ish weight engine written in c++, and uses the Vulkan graphics api. *Planned* supported scripting languages are Lua and python. But I am looking into supporting Java and C#.
 
-Right now (8-22-2022) only Lua is 100% confirmed, python will be tested sometime soon. C++ was removed from the scripting language support due to troubles with structuring the engine and the requirement of clang, a C/C++ compiler. Also, this engine is being renamed to Cyclone engine/Cyclone game engine. The next push to this repo will namely have the renaming changes, Lua scripting and (hopefully) python scripting, although with a very limited functionality while all the new functions are being made.
 
 ### *NOTE: this readme is in progress, as things arent set in stone yet*
 
-[Heres](docs/documentation.md) the documentation (not close to being worked on)
+[Heres](docs/documentation.md) the documentation (not in a good state, by that I mean it has nothing in it)
 
 ### *Contents*
 
 1. [Structure](#structure)
 2. [Code Examples](#code-examples)
-3. [Libraries and API's](#libraries-and-apis)
+3. [Current focus/progress](#current-focusprogress)
+4. [Libraries, Binaries and API's](#libraries-binaries-and-apis)
 
 ## Structure
 
@@ -44,12 +44,33 @@ function Render()
     print( "I am rendering!" )
 end
 ```
-This lua script, when used by the engine, will print "I am updating!" during logic updating, and "I am rendering!" during the renderpass.
+This lua script, when used by the engine, will print ``"I am updating!"`` during logic updating, and ``"I am rendering!"`` during the renderpass.
 
-## Libraries and API's
+```lua
+-- LUA, NOTE: Cyclone.lua isnt updated to point yet
+cyc = require "Cyclone"
+
+function Update()
+    if cyc.GetButtonState "M_LEFT" then
+        print "You killed jim!"
+    end
+    if cyc.GetButtonState( "M_WHEELUP", "hold" ) or cyc.getButtonState( "M_WHEELDOWN", "hold" ) then
+        print "And ill do it again"
+    end
+end
+```
+When used by the engine, this script will print ``"You killed jim!"`` when the left mouse button is pressed, and will print ``"And ill do it again"`` when the mouse wheel gets moved up OR down.
+
+
+## Current focus/progress
+Lua scripting is currently being created, there are still a LOT of functions to be extended into lua. Once that is done, python scripting will be pretty close up to being investigated.
+
+
+## Libraries, Binaries and API's
 ![Vulkan](docs/Vulkan_100px_Dec16.png)
 - [Vulkan 1.3](https://www.vulkan.org/)
 - [SDL2](https://www.libsdl.org/)
 - [VMA *Vulkan Memory Allocator*](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
 - [VkBootstrap](https://github.com/charles-lunarg/vk-bootstrap)
 - [glm](https://github.com/g-truc/glm)
+- [Lua binaries](http://luabinaries.sourceforge.net)
