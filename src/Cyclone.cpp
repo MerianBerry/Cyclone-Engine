@@ -1,5 +1,4 @@
 #include "Cyclone.h"
-#include <iostream>
 #include <filesystem>
 
 using namespace cyc;

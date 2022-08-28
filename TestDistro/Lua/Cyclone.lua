@@ -1,5 +1,5 @@
-local t = { }
-t.keys = { }
+local t = {}
+t.keys = {}
 
 t.keys[ "A" ] = 0
 t.keys[ "B" ] = 1
@@ -85,37 +85,17 @@ t.keys[ "F13" ] = 80
 t.keys[ "F14" ] = 81
 t.keys[ "F15" ] = 82
 
-t.buttons = {}
-t.buttons[ "M_LEFT" ] = 0
-t.buttons[ "M_RIGHT" ] = 1
-t.buttons[ "M_MIDDLE" ] = 2
-t.buttons[ "M_WHEELUP" ] = 3
-t.buttons[ "M_WHEELDOWN" ] = 4
-
 function t.LoadMesh( path, name )
     return cpp_loadmesh( path, name )
 end
 
-t.Swapchain = { data = 0, create = function( self, int )
-    self.data = int
-    print ( self.data )
-end }
-
--- Gets the boolean value of the input key. Keys: Use the keys table. Modes: "pulse" and "hold", "pulse" by default
+-- Gets the boolean value of the input key. Keys: Use the keys table. Modes: "pulse" and "hold", "hold" by default
 function t.GetKeyState( key, mode )
-    mode = mode or "pulse"
+    mode = mode or "hold"
     if type( key ) ~= "string" then
         print "ERROR: GetKeyState->key isn't a string. param key MUST ALWAYS be a string"
     end
     return cpp_GetKeyState( t.keys[ key ], mode )
-end
-
-function t.GetButtonState( btn, mode )
-    mode = mode or "pulse"
-    if type( btn ) ~= "string" then
-        print "ERROR: GetMousebtnState->btn isn't a string. param btn MUST ALWAYS be a string"
-    end
-    return cpp_GetBtnState( t.buttons[ btn ], mode )
 end
 
 function t.CreatePipeline( dimtype, type, Vertshader, Fragshader )
@@ -125,38 +105,4 @@ end
 function t.CreateBasicPipeline( dimtype )
     return t.CreatePipeline( dimtype, "graphics", "basicVert2d", "basicFrag2d" )
 end
-
-function t.DrawClear( r, g, b, a )
-    a = a or 255
-    if type( r ) ~= "number" or type( g ) ~= "number" or type( b ) ~= "number" or type( a ) ~= "number" then
-        print "ERROR: DrawClear->a param isn't a number. all params MUST ALWAYS be a number"
-    end
-    cpp_DrawClear( r, g, b )
-end
-
-function t.Exit( code, message )
-    message = message or ""
-    if type( code ) ~= "number" then
-        print "WARN: Exit->code isn't a number. param code MUST ALWAYS be a number"
-        code = 0
-    end
-    if type( message ) ~= "string" then
-        print "WARN: Exit->message ins't a string. Param 'message' MUST ALWAYS be a string"
-        message = ""
-    end
-    cpp_Exit( code, message )
-end
-
-function t.SetWindowSize( w, h )
-    cpp_SetWindowSize( w, h )
-end
-
-function t.SetWindowPos( x, y )
-    cpp_SetWindowPos( x, y )
-end
-
-function t.SetWindowState( mode )
-
-end
-
 return t

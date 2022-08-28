@@ -1,9 +1,10 @@
 #include "Cyclone.h"
 #include "Cyclone-inits.h"
-#include <iostream>
 
 //#define SHADER_VERBOSE
 //#define NOWAIT_VERBOSE
+//#define SCRIPT_VERBOSE
+#define VULKAN_DEBUG
 #undef pi
 
 #define VK_CHECK(result)                           \
@@ -12,7 +13,7 @@
 		VkResult err = result;                     \
 		if (err)                                   \
 		{                                          \
-            cyc::WaitMS(5000);                   \
+            cyc::WaitMS(5000);                     \
 			abort();                               \
 		}                                          \
 	} while (0)
@@ -23,11 +24,28 @@ cyc::Lambda_vec< void > MeshDeletionQueue;
 
 using cyc::Lambda; using std::pair;
 
-constexpr Uint32 FRAME_WAIT = std::numeric_limits<Uint32>::max();
+constexpr Uint32 FRAME_WAIT = std::numeric_limits< Uint32> ::max();
 
 vector< Lambda< void >> _NOWAITLIST;
 #define NoWait _NOWAITLIST.push_back
 
+Uint32 runtime_status = CYC_STATUS_IDLE;
+
+std::unordered_map< string, cyc::Mesh > Meshes;
+vector< string > MeshKeys;
+
+cyc::Mouse Mouse;
+cyc::Keyboard Keys;
+
+glm::vec4 Clearrgba = { .0f, .0f, .0f, 1.f };
+
+
+/**
+ * It runs all the functions in the _NOWAITLIST vector, then clears the vector, then waits 5
+ * microseconds
+ * 
+ * @param status The status of the main thread.
+ */
 void main_( Uint32 *status )
 {
     #ifdef NOWAIT_VERBOSE
@@ -47,17 +65,197 @@ void main_( Uint32 *status )
     #endif
 }
 
-void labort()
+/**
+ * > The function `cabort()` waits 5 seconds and then calls `abort()`
+ */
+void cabort()
 {
     cyc::WaitMS(5000);
     abort();
+}
+
+int __cdecl lua_LoadMesh( lua_State *L )
+{
+    //printf( "[C++] lua_LoadMesh function called\n" );
+    string path = lua_tostring( L, 1 );
+    string name = lua_tostring( L, 2 );
+
+    if ( !cyc::UnorderedExists( &Meshes, name ) )
+    {
+        Meshes[ name ] = cyc::LoadMeshes( { path } ).result[ 0 ];
+        MeshKeys.push_back( name );
+        // cyc_log( "New mesh \'%s\' appended with path \'%s\'\n", name.c_str(), path.c_str() );
+    }
+    else
+    {
+        // cyc_log( "Mesh \'%s\' already exists, no new mesh loaded\n", name.c_str() );
+    }
+    lua_pushstring( L, name.c_str() );
+    return 1;
+}
+
+int __cdecl lua_GetKeyState( lua_State *L )
+{
+    int key = lua_tonumber( L, 1 );
+    string mode = lua_tostring( L, 2 );
+
+    if ( mode == "hold" )
+    {
+        lua_pushboolean( L, Keys.hold[ key ] );
+    }
+    else if ( mode == "pulse" )
+    {
+        lua_pushboolean( L, Keys.pulse[ key ] );
+    }
+    else
+    {
+        cyc_log( "\'%s\' is not a valid mode\n", mode.c_str() )
+    }
+    return 1;
+}
+
+int __cdecl lua_GetButtonState( lua_State *L )
+{
+    int btn = lua_tonumber( L, 1 );
+    string mode = lua_tostring( L, 2 );
+
+    if ( mode == "hold" )
+    {
+        lua_pushboolean( L, Mouse.hold[ btn ] );
+    }
+    else if ( mode == "pulse" )
+    {
+        lua_pushboolean( L, Mouse.pulse[ btn ] );
+    }
+    else
+    {
+        cyc_log( "\'%s\' is not a valid mode\n", mode.c_str() )
+    }
+    return 1;
+}
+
+int __cdecl lua_DrawClear( lua_State *L )
+{
+    float r = (float)lua_tonumber( L, 1 );
+    float g = (float)lua_tonumber( L, 2 );
+    float b = (float)lua_tonumber( L, 3 );
+    float a = (float)lua_tonumber( L, 4 );
+
+    Clearrgba = { r / 255.f, g / 255.f, b / 255.f, a / 255.f };
+    return 0;
+}
+
+int __cdecl lua_Exit( lua_State *L )
+{
+    int code = lua_tonumber( L, 1 );
+    string mesg = lua_tostring( L, 2 );
+    
+    if ( mesg != "" )
+    {
+        cyc_log( "A lua file has called Exit with code #%i, and a message: \'%s\'\n", code, mesg.c_str() )
+    }
+    else
+        cyc_log( "A lua file has called Exit with code #%i\n", code )
+    runtime_status |= CYC_STATUS_QUIT;
+
+    return 0;
+}
+
+cyc::Window mainwindow;
+Uint32 WindowScriptStats = 0;
+
+int __cdecl lua_SetWindowSize( lua_State *L )
+{
+    int w = lua_tonumber( L, 1 );
+    int h = lua_tonumber( L, 2 );
+
+    WindowScriptStats |= 1;
+    mainwindow.size.width = w;
+    mainwindow.size.height = h;
+    SDL_SetWindowSize( mainwindow.sdl_handle, w, h );
+    return 0;
+}
+
+int __cdecl lua_SetWindowPos( lua_State *L )
+{
+    int x = lua_tonumber( L, 1 );
+    int y = lua_tonumber( L, 2 );
+
+    mainwindow.pos.x = x;
+    mainwindow.pos.y = y;
+    SDL_SetWindowPosition( mainwindow.sdl_handle, x, y );
+    return 0;
+}
+
+int __cdecl lua_SetWindowState( lua_State *L )
+{
+    string mode = lua_tostring( L, 1 );
+    
+    return 0;
+}
+
+vector< cyc::LuaScript > Lua_Scripts;
+
+/**
+ * It loads all the lua scripts in the scripts folder, and returns a vector of Script objects
+ * 
+ * @return A vector of Scripts.
+ */
+vector< cyc::LuaScript > __cdecl InitLua()
+{
+    using cyc::LuaScript;
+    vector< LuaScript > scripts;
+
+    //Get the scripts in the scripts folder
+    auto scriptpaths = cyc::GetFiles( "scripts", ".lua" ).result;
+    size_t scriptcnt = scriptpaths.size();
+
+    for ( size_t i = 0; i < scriptcnt; ++i )
+    {
+        //Quick shortenings that will come in handy later
+        LuaScript o = { };
+        auto u = scriptpaths[ i ];
+
+        //We need to create a new 'state' or Lua vm for each lua file
+        //We also want to open all default libs
+        o.L = luaL_newstate( );
+        luaL_openlibs( o.L );
+
+        lua_register( o.L, "cpp_loadmesh", lua_LoadMesh );
+        lua_register( o.L, "cpp_GetKeyState", lua_GetKeyState );
+        lua_register( o.L, "cpp_GetBtnState", lua_GetButtonState );
+        lua_register( o.L, "cpp_DrawClear", lua_DrawClear );
+        lua_register( o.L, "cpp_Exit", lua_Exit );
+        lua_register( o.L, "cpp_SetWindowSize", lua_SetWindowSize );
+        lua_register( o.L, "cpp_SetWindowPos", lua_SetWindowPos );
+        lua_register( o.L, "cpp_SetWindowState", lua_SetWindowState );
+
+        #ifdef SCRIPT_VERBOSE
+        cyc_log( "Lua script detected, path is %s, name is %s\n",
+            u.c_str(),
+            u.substr( u.find_last_of( '\\')+1 ).c_str() );
+        #endif
+        o.name = u.substr( u.find_last_of( '\\' )+1 );
+
+        //If luaL_dofile returns LUA_OK, then, set the script to active
+        if ( cyc::CheckLua( o.L, luaL_dofile( o.L, u.c_str()) ) )
+        {
+            o.active = true;
+            scripts.push_back( o );
+        }
+    }
+    cyc_log( "Finished loading Lua scripts. %lu out of %lu scripts had errors.\n",
+        scriptcnt - scripts.size(),
+        scripts.size() );
+    
+
+    return scripts;
 }
 
 int main()
 {
     cyc::StopWatch starting_time;
     cyc::StartStopwatch( &starting_time );
-    Uint32 runtime_status = CYC_STATUS_IDLE;
 
     cyc::WriteFile("log.txt", "");
 
@@ -73,24 +271,25 @@ int main()
     if ( SDL_Init(SDL_INIT_EVERYTHING) != 0 )
     {
         cyc_log( "SDL error: SDL failed to initilise :(\n" )
-        labort();
+        cabort();
     }
     cyc_log( "SDL initiated in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds )
     cyc::ResetStopwatch( &stopwatch );
 
     vkb::InstanceBuilder inst_builder;
-    vkb::Instance vkbInstance;
-    VkDebugUtilsMessengerEXT debugger;
     vkb::Device vkbDevice;
     vkb::PhysicalDevice physDevice;
 
-    vkbInstance = inst_builder.set_app_name( "Lunarge" )
+    vkb::Instance vkbInstance = inst_builder.set_app_name( "Cyclone engine" )
     .request_validation_layers()
     .require_api_version(1, 3, 0)
+    #ifdef VULKAN_DEBUG
     .use_default_debug_messenger()
     .build().value();
-
-    debugger = vkbInstance.debug_messenger;
+    #else
+    .build().value();
+    #endif
+    
 
     MasterDeletionQueue.push_back(
     [=]()
@@ -98,20 +297,19 @@ int main()
         vkb::destroy_instance(vkbInstance);
         //cyc_log( "Destroyed vulkan (vkb) instance :)\n" )
     });
-    
+
     cyc_log("Vulkan instance initiated in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds)
-    cyc::ResetStopwatch(&stopwatch);
+    cyc::ResetStopwatch( &stopwatch );
 
     if( !cyc::DoesFileExist( "cfg/config.txt" ) )
     {
         cyc::WriteFile( "cfg/config.txt", "" );
     }
     vector<string> config = cyc::GetLines("cfg/config.txt").result;
-    cyc::Window mainwindow;
     {
         if( config.size() == 0 )
         {
-            cyc::WriteFile( "cfg/config.txt", string_format("%i\n%i\n%i\n%i\nLunarge", 960, 540, 0, 0) );
+            cyc::WriteFile( "cfg/config.txt", string_format( "%i\n%i\n%i\n%i\nCyclone\n%i", 960, 540, 0, 0, 0 ) );
             config = cyc::GetLines("cfg/config.txt").result;
         }
         mainwindow.size.width = stoi(config[0]);
@@ -119,15 +317,25 @@ int main()
         mainwindow.pos.x = stoi( config[2] ) == 0 ? SDL_WINDOWPOS_CENTERED : stoi( config[2] );
         mainwindow.pos.y = stoi( config[3] ) == 0 ? SDL_WINDOWPOS_CENTERED : stoi( config[3] );
         mainwindow.title = config[4].c_str();
+        if ( stoi( config[ 5 ] ) == 1 )
+        {
+            mainwindow.flags |= SDL_WINDOW_MAXIMIZED;
+            mainwindow.size.width = 960;
+            mainwindow.size.height = 540;
+            mainwindow.pos.x = SDL_WINDOWPOS_CENTERED;
+            mainwindow.pos.y = SDL_WINDOWPOS_CENTERED;
+        }
         
         mainwindow.sdl_handle = SDL_CreateWindow(mainwindow.title,
         mainwindow.pos.x,
         mainwindow.pos.y,
         mainwindow.size.width,
         mainwindow.size.height,
-        SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MOUSE_FOCUS );
+        SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MOUSE_FOCUS | SDL_WINDOW_HIDDEN );
 
-        SDL_SetWindowMinimumSize(mainwindow.sdl_handle, 480, 270);
+        if ( stoi( config[ 5 ] ) == 1 )
+           SDL_MaximizeWindow( mainwindow.sdl_handle );
+        SDL_SetWindowMinimumSize(mainwindow.sdl_handle, 960, 540);
         SDL_Vulkan_CreateSurface(mainwindow.sdl_handle, vkbInstance.instance, &mainwindow.surface);
 
         cyc_log("Window creation has been completed in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds);
@@ -152,6 +360,7 @@ int main()
     cyc_log("Physical device selected in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds);
     cyc::ResetStopwatch(&stopwatch);
     
+    //============================DEVICE SELECTION===============================
     {
         vkb::DeviceBuilder deviceBuilder{ physDevice };
 
@@ -165,8 +374,10 @@ int main()
         maintenance4Features.pNext = nullptr;
         maintenance4Features.maintenance4 = VK_TRUE;
 
-        vkbDevice = deviceBuilder.add_pNext( &shader_draw_parameters_features ).add_pNext( &maintenance4Features ).build().value();
-        
+        vkbDevice = deviceBuilder
+            .add_pNext( &shader_draw_parameters_features )
+            .add_pNext( &maintenance4Features )
+            .build().value();
         
     }
     cyc_log("Device has been selected in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds);
@@ -184,10 +395,8 @@ int main()
     }
     
     //=============================MF SWAPCHAIN==================================
-
     vkb::Swapchain vkbSwapchain;
     cyc::swapchain swpchain;
-    //auto renderPass = std::make_unique<VkRenderPass>( NULL );
     VkRenderPass renderPass;
     vector<VkFramebuffer> frameBufs;
 
@@ -328,7 +537,7 @@ int main()
         }
     });
 
-    std::function<void(vector<cyc::frameData>)> waitAllFences([=](vector<cyc::frameData> Frames)
+    std::function< void(vector< cyc::frameData >) > waitAllFences([=](vector< cyc::frameData > Frames)
     {
         VkFence allfences[FRAME_OVERLAP];
         for( int i = 0; i < FRAME_OVERLAP; ++i )
@@ -337,15 +546,22 @@ int main()
         }
         VK_CHECK(vkWaitForFences( vkbDevice.device, FRAME_OVERLAP, allfences, true, FRAME_WAIT ));
     });
+
     swipychain(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
 
     cyc_log( "Swapchain created in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds )
-    cyc::ResetStopwatch(&stopwatch);
+    cyc::ResetStopwatch( &stopwatch );
 
-    vector<cyc::frameData> frames ( FRAME_OVERLAP );
-    VkFence uploadFence = {};
-    VkCommandBuffer uploadCommandBuffer = {};
-    VkCommandPool uploadCommandPool = {};
+    vector< cyc::frameData > frames ( FRAME_OVERLAP );
+    VkFence uploadFence = { };
+    VkCommandBuffer uploadCommandBuffer = { };
+    VkCommandPool uploadCommandPool = { };
+
+    //==============================================SCRIPT LOADING======================================================
+    //================================LUA==============================
+    
+    Lua_Scripts = InitLua( );
+
 
     //==========================================SYNC OBJECTS CREATION===================================================
     {
@@ -645,24 +861,6 @@ int main()
 
     Shaders = LoadShaders();
 
-    //createPipelines( shadersLoaded, &ColorFillPipelineLayout, &ColorFillPipeline );
-    //cyc_log( "Pipelines created in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds )
-    //cyc::ResetStopwatch( &stopwatch );
-
-    if( !cyc::DoesFileExist( "cfg/meshload.txt" ))
-    {
-        cyc::WriteFile( "cfg/meshload.txt", "" );
-    }
-    vector< string > meshesToLoad; 
-    vector< cyc::Mesh > meshes;
-
-    NoWait([&]()
-    {
-        meshesToLoad = cyc::GetLines( "cfg/meshload.txt" ).result;
-        meshes = cyc::LoadMeshes( meshesToLoad ).result;
-        cyc::UploadMeshes( &meshes, vmaAllocator, &MeshDeletionQueue );
-    });   
-
     auto reloadMeshes([&]( vector<string> *oldMeshesToLoad, vector<cyc::Mesh> *oldMeshes )
     {
         waitAllFences( frames );
@@ -685,237 +883,234 @@ int main()
         }
     });
     
+    SDL_ShowWindow( mainwindow.sdl_handle );
     cyc_log( "Beginning runtime, init sequence took %0.1fms\n\n", cyc::CheckStopwatch(starting_time).result.milliseconds )
 
     //================================RUNTIME====================================
-    std::unordered_map<string, bool> windowthings;
-    array< bool, 83 > keys = { false };
-    auto keysCpy = keys;
-    array< bool, 83 > keysPulse = { false };
-    cyc::Mouse mouse;
 
     cyc::Camera Cam;
     Cam.pos = { 0.f, 0.f, -4.f };
 
     SDL_Event e;
-    while ( !cyc::CompareFlags(runtime_status, CYC_STATUS_QUIT) )
+    while ( !cyc::CompareFlags( runtime_status, CYC_STATUS_QUIT ) )
     {
-        keysPulse = { false };
-        mouse.pulse = { false };
-        mouse.hold[ 3 ] = false; mouse.hold[ 4 ] = false;
-        mouse.velocity = { 0.f, 0.f };
+        Keys.pulse = { false };
+        Mouse.pulse = { false };
+        Mouse.hold[ 3 ] = false; Mouse.hold[ 4 ] = false;
+        Mouse.velocity = { 0.f, 0.f };
         glm::vec2 MovementInputs = { 0.f, 0.f };
+        Clearrgba = { .0f, .0f, .0f, 1.f };
 
         cyc::StopWatch frameDelta;
-        cyc::StartStopwatch(&frameDelta);
-        while(SDL_PollEvent(&e) != 0)
+        cyc::StartStopwatch( &frameDelta );
+        while(SDL_PollEvent( &e ) != 0)
         {
             switch( e.type )
             {
                 case SDL_KEYDOWN:
                 switch( e.key.keysym.sym )
                 {
-                    case SDLK_a : keys[ 0 ] = true; break;
-                    case SDLK_b : keys[ 1 ] = true; break;
-                    case SDLK_c : keys[ 2 ] = true; break;
-                    case SDLK_d : keys[ 3 ] = true; break;
-                    case SDLK_e : keys[ 4 ] = true; break;
-                    case SDLK_f : keys[ 5 ] = true; break;
-                    case SDLK_g : keys[ 6 ] = true; break;
-                    case SDLK_h : keys[ 7 ] = true; break;
-                    case SDLK_i : keys[ 8 ] = true; break;
-                    case SDLK_j : keys[ 9 ] = true; break;
-                    case SDLK_k : keys[ 10 ] = true; break;
-                    case SDLK_l : keys[ 11 ] = true; break;
-                    case SDLK_m : keys[ 12 ] = true; break;
-                    case SDLK_n : keys[ 13 ] = true; break;
-                    case SDLK_o : keys[ 14 ] = true; break;
-                    case SDLK_p : keys[ 15 ] = true; break;
-                    case SDLK_q : keys[ 16 ] = true; break;
-                    case SDLK_r : keys[ 17 ] = true; break;
-                    case SDLK_s : keys[ 18 ] = true; break;
-                    case SDLK_t : keys[ 19 ] = true; break;
-                    case SDLK_u : keys[ 20 ] = true; break;
-                    case SDLK_v : keys[ 21 ] = true; break;
-                    case SDLK_w : keys[ 22 ] = true; break;
-                    case SDLK_x : keys[ 23 ] = true; break;
-                    case SDLK_y : keys[ 24 ] = true; break;
-                    case SDLK_z : keys[ 25 ] = true; break;
-                    case SDLK_1 : keys[ 26 ] = true; break;
-                    case SDLK_2 : keys[ 27 ] = true; break;
-                    case SDLK_3 : keys[ 28 ] = true; break;
-                    case SDLK_4 : keys[ 29 ] = true; break;
-                    case SDLK_5 : keys[ 30 ] = true; break;
-                    case SDLK_6 : keys[ 31 ] = true; break;
-                    case SDLK_7 : keys[ 32 ] = true; break;
-                    case SDLK_8 : keys[ 33 ] = true; break;
-                    case SDLK_9 : keys[ 34 ] = true; break;
-                    case SDLK_SPACE : keys[ 35 ] = true; break;
-                    case SDLK_ESCAPE : keys[ 36 ] = true; break;
-                    case SDLK_LALT : keys[ 37 ] = true; break;
-                    case SDLK_LCTRL : keys[ 38 ] = true; break;
-                    case SDLK_LSHIFT : keys[ 39 ] = true; break;
-                    case SDLK_CAPSLOCK : keys[ 40 ] = true; break;
-                    case SDLK_TAB : keys[ 41 ] = true; break;
-                    case SDLK_BACKQUOTE : keys[ 42 ] = true; break;
-                    case SDLK_COMMA : keys[ 43 ] = true; break;
-                    case SDLK_PERIOD : keys[ 44 ] = true; break;
-                    case SDLK_RALT : keys[ 45 ] = true; break;
-                    case SDLK_RCTRL : keys[ 46 ] = true; break;
-                    case SDLK_RSHIFT : keys[ 47 ] = true; break;
-                    case SDLK_SLASH : keys[ 48 ] = true; break;
-                    case SDLK_SEMICOLON : keys[ 49 ] = true; break;
-                    case SDLK_QUOTE : keys[ 50 ] = true; break;
-                    case SDLK_KP_ENTER : keys[ 51 ] = true; break;
-                    case SDLK_LEFTBRACKET : keys[ 52 ] = true; break;
-                    case SDLK_RIGHTBRACKET : keys[ 53 ] = true; break;
-                    case SDLK_BACKSLASH : keys[ 54 ] = true; break;
-                    case SDLK_BACKSPACE : keys[ 55 ] = true; break;
-                    case SDLK_EQUALS : keys[ 56 ] = true; break;
-                    case SDLK_MINUS : keys[ 57 ] = true; break;
-                    case SDLK_F1 : keys[ 58 ] = true; break;
-                    case SDLK_F2 : keys[ 59 ] = true; break;
-                    case SDLK_F3 : keys[ 60 ] = true; break;
-                    case SDLK_F4 : keys[ 61 ] = true; break;
-                    case SDLK_F5 : keys[ 62 ] = true; break;
-                    case SDLK_F6 : keys[ 63 ] = true; break;
-                    case SDLK_F7 : keys[ 64 ] = true; break;
-                    case SDLK_F8 : keys[ 65 ] = true; break;
-                    case SDLK_F9 : keys[ 66 ] = true; break;
-                    case SDLK_F10: keys[ 67 ] = true; break;
-                    case SDLK_F11: keys[ 68 ] = true; break;
-                    case SDLK_F12: keys[ 69 ] = true; break;
-                    case SDLK_LEFT : keys[ 70 ] = true; break;
-                    case SDLK_RIGHT : keys[ 71 ] = true; break;
-                    case SDLK_UP : keys[ 72 ] = true; break;
-                    case SDLK_DOWN : keys[ 73 ] = true; break;
-                    case SDLK_INSERT : keys[ 74 ] = true; break;
-                    case SDLK_HOME : keys[ 75 ] = true; break;
-                    case SDLK_DELETE : keys[ 76 ] = true; break;
-                    case SDLK_END : keys[ 77 ] = true; break;
-                    case SDLK_PAGEUP : keys[ 78 ] = true; break;
-                    case SDLK_PAGEDOWN : keys[ 79 ] = true; break;
-                    case SDLK_F13 : keys[ 80 ] = true; break;
-                    case SDLK_F14 : keys[ 81 ] = true; break;
-                    case SDLK_F15 : keys[ 82 ] = true; break;
+                    case SDLK_a : Keys.hold[ 0 ] = true; break;
+                    case SDLK_b : Keys.hold[ 1 ] = true; break;
+                    case SDLK_c : Keys.hold[ 2 ] = true; break;
+                    case SDLK_d : Keys.hold[ 3 ] = true; break;
+                    case SDLK_e : Keys.hold[ 4 ] = true; break;
+                    case SDLK_f : Keys.hold[ 5 ] = true; break;
+                    case SDLK_g : Keys.hold[ 6 ] = true; break;
+                    case SDLK_h : Keys.hold[ 7 ] = true; break;
+                    case SDLK_i : Keys.hold[ 8 ] = true; break;
+                    case SDLK_j : Keys.hold[ 9 ] = true; break;
+                    case SDLK_k : Keys.hold[ 10 ] = true; break;
+                    case SDLK_l : Keys.hold[ 11 ] = true; break;
+                    case SDLK_m : Keys.hold[ 12 ] = true; break;
+                    case SDLK_n : Keys.hold[ 13 ] = true; break;
+                    case SDLK_o : Keys.hold[ 14 ] = true; break;
+                    case SDLK_p : Keys.hold[ 15 ] = true; break;
+                    case SDLK_q : Keys.hold[ 16 ] = true; break;
+                    case SDLK_r : Keys.hold[ 17 ] = true; break;
+                    case SDLK_s : Keys.hold[ 18 ] = true; break;
+                    case SDLK_t : Keys.hold[ 19 ] = true; break;
+                    case SDLK_u : Keys.hold[ 20 ] = true; break;
+                    case SDLK_v : Keys.hold[ 21 ] = true; break;
+                    case SDLK_w : Keys.hold[ 22 ] = true; break;
+                    case SDLK_x : Keys.hold[ 23 ] = true; break;
+                    case SDLK_y : Keys.hold[ 24 ] = true; break;
+                    case SDLK_z : Keys.hold[ 25 ] = true; break;
+                    case SDLK_1 : Keys.hold[ 26 ] = true; break;
+                    case SDLK_2 : Keys.hold[ 27 ] = true; break;
+                    case SDLK_3 : Keys.hold[ 28 ] = true; break;
+                    case SDLK_4 : Keys.hold[ 29 ] = true; break;
+                    case SDLK_5 : Keys.hold[ 30 ] = true; break;
+                    case SDLK_6 : Keys.hold[ 31 ] = true; break;
+                    case SDLK_7 : Keys.hold[ 32 ] = true; break;
+                    case SDLK_8 : Keys.hold[ 33 ] = true; break;
+                    case SDLK_9 : Keys.hold[ 34 ] = true; break;
+                    case SDLK_SPACE : Keys.hold[ 35 ] = true; break;
+                    case SDLK_ESCAPE : Keys.hold[ 36 ] = true; break;
+                    case SDLK_LALT : Keys.hold[ 37 ] = true; break;
+                    case SDLK_LCTRL : Keys.hold[ 38 ] = true; break;
+                    case SDLK_LSHIFT : Keys.hold[ 39 ] = true; break;
+                    case SDLK_CAPSLOCK : Keys.hold[ 40 ] = true; break;
+                    case SDLK_TAB : Keys.hold[ 41 ] = true; break;
+                    case SDLK_BACKQUOTE : Keys.hold[ 42 ] = true; break;
+                    case SDLK_COMMA : Keys.hold[ 43 ] = true; break;
+                    case SDLK_PERIOD : Keys.hold[ 44 ] = true; break;
+                    case SDLK_RALT : Keys.hold[ 45 ] = true; break;
+                    case SDLK_RCTRL : Keys.hold[ 46 ] = true; break;
+                    case SDLK_RSHIFT : Keys.hold[ 47 ] = true; break;
+                    case SDLK_SLASH : Keys.hold[ 48 ] = true; break;
+                    case SDLK_SEMICOLON : Keys.hold[ 49 ] = true; break;
+                    case SDLK_QUOTE : Keys.hold[ 50 ] = true; break;
+                    case SDLK_RETURN : Keys.hold[ 51 ] = true; break;
+                    case SDLK_LEFTBRACKET : Keys.hold[ 52 ] = true; break;
+                    case SDLK_RIGHTBRACKET : Keys.hold[ 53 ] = true; break;
+                    case SDLK_BACKSLASH : Keys.hold[ 54 ] = true; break;
+                    case SDLK_BACKSPACE : Keys.hold[ 55 ] = true; break;
+                    case SDLK_EQUALS : Keys.hold[ 56 ] = true; break;
+                    case SDLK_MINUS : Keys.hold[ 57 ] = true; break;
+                    case SDLK_F1 : Keys.hold[ 58 ] = true; break;
+                    case SDLK_F2 : Keys.hold[ 59 ] = true; break;
+                    case SDLK_F3 : Keys.hold[ 60 ] = true; break;
+                    case SDLK_F4 : Keys.hold[ 61 ] = true; break;
+                    case SDLK_F5 : Keys.hold[ 62 ] = true; break;
+                    case SDLK_F6 : Keys.hold[ 63 ] = true; break;
+                    case SDLK_F7 : Keys.hold[ 64 ] = true; break;
+                    case SDLK_F8 : Keys.hold[ 65 ] = true; break;
+                    case SDLK_F9 : Keys.hold[ 66 ] = true; break;
+                    case SDLK_F10: Keys.hold[ 67 ] = true; break;
+                    case SDLK_F11: Keys.hold[ 68 ] = true; break;
+                    case SDLK_F12: Keys.hold[ 69 ] = true; break;
+                    case SDLK_LEFT : Keys.hold[ 70 ] = true; break;
+                    case SDLK_RIGHT : Keys.hold[ 71 ] = true; break;
+                    case SDLK_UP : Keys.hold[ 72 ] = true; break;
+                    case SDLK_DOWN : Keys.hold[ 73 ] = true; break;
+                    case SDLK_INSERT : Keys.hold[ 74 ] = true; break;
+                    case SDLK_HOME : Keys.hold[ 75 ] = true; break;
+                    case SDLK_DELETE : Keys.hold[ 76 ] = true; break;
+                    case SDLK_END : Keys.hold[ 77 ] = true; break;
+                    case SDLK_PAGEUP : Keys.hold[ 78 ] = true; break;
+                    case SDLK_PAGEDOWN : Keys.hold[ 79 ] = true; break;
+                    case SDLK_F13 : Keys.hold[ 80 ] = true; break;
+                    case SDLK_F14 : Keys.hold[ 81 ] = true; break;
+                    case SDLK_F15 : Keys.hold[ 82 ] = true; break;
                 }
                 break;
                 case SDL_KEYUP:
                 switch( e.key.keysym.sym )
                 {
-                    case SDLK_a : keys[ 0 ] = false; break;
-                    case SDLK_b : keys[ 1 ] = false; break;
-                    case SDLK_c : keys[ 2 ] = false; break;
-                    case SDLK_d : keys[ 3 ] = false; break;
-                    case SDLK_e : keys[ 4 ] = false; break;
-                    case SDLK_f : keys[ 5 ] = false; break;
-                    case SDLK_g : keys[ 6 ] = false; break;
-                    case SDLK_h : keys[ 7 ] = false; break;
-                    case SDLK_i : keys[ 8 ] = false; break;
-                    case SDLK_j : keys[ 9 ] = false; break;
-                    case SDLK_k : keys[ 10 ] = false; break;
-                    case SDLK_l : keys[ 11 ] = false; break;
-                    case SDLK_m : keys[ 12 ] = false; break;
-                    case SDLK_n : keys[ 13 ] = false; break;
-                    case SDLK_o : keys[ 14 ] = false; break;
-                    case SDLK_p : keys[ 15 ] = false; break;
-                    case SDLK_q : keys[ 16 ] = false; break;
-                    case SDLK_r : keys[ 17 ] = false; break;
-                    case SDLK_s : keys[ 18 ] = false; break;
-                    case SDLK_t : keys[ 19 ] = false; break;
-                    case SDLK_u : keys[ 20 ] = false; break;
-                    case SDLK_v : keys[ 21 ] = false; break;
-                    case SDLK_w : keys[ 22 ] = false; break;
-                    case SDLK_x : keys[ 23 ] = false; break;
-                    case SDLK_y : keys[ 24 ] = false; break;
-                    case SDLK_z : keys[ 25 ] = false; break;
-                    case SDLK_1 : keys[ 26 ] = false; break;
-                    case SDLK_2 : keys[ 27 ] = false; break;
-                    case SDLK_3 : keys[ 28 ] = false; break;
-                    case SDLK_4 : keys[ 29 ] = false; break;
-                    case SDLK_5 : keys[ 30 ] = false; break;
-                    case SDLK_6 : keys[ 31 ] = false; break;
-                    case SDLK_7 : keys[ 32 ] = false; break;
-                    case SDLK_8 : keys[ 33 ] = false; break;
-                    case SDLK_9 : keys[ 34 ] = false; break;
-                    case SDLK_SPACE : keys[ 35 ] = false; break;
-                    case SDLK_ESCAPE : keys[ 36 ] = false; break;
-                    case SDLK_LALT : keys[ 37 ] = false; break;
-                    case SDLK_LCTRL : keys[ 38 ] = false; break;
-                    case SDLK_LSHIFT : keys[ 39 ] = false; break;
-                    case SDLK_CAPSLOCK : keys[ 40 ] = false; break;
-                    case SDLK_TAB : keys[ 41 ] = false; break;
-                    case SDLK_BACKQUOTE : keys[ 42 ] = false; break;
-                    case SDLK_COMMA : keys[ 43 ] = false; break;
-                    case SDLK_PERIOD : keys[ 44 ] = false; break;
-                    case SDLK_RALT : keys[ 45 ] = false; break;
-                    case SDLK_RCTRL : keys[ 46 ] = false; break;
-                    case SDLK_RSHIFT : keys[ 47 ] = false; break;
-                    case SDLK_SLASH : keys[ 48 ] = false; break;
-                    case SDLK_SEMICOLON : keys[ 49 ] = false; break;
-                    case SDLK_QUOTE : keys[ 50 ] = false; break;
-                    case SDLK_KP_ENTER : keys[ 51 ] = false; break;
-                    case SDLK_LEFTBRACKET : keys[ 52 ] = false; break;
-                    case SDLK_RIGHTBRACKET : keys[ 53 ] = false; break;
-                    case SDLK_BACKSLASH : keys[ 54 ] = false; break;
-                    case SDLK_BACKSPACE : keys[ 55 ] = false; break;
-                    case SDLK_EQUALS : keys[ 56 ] = false; break;
-                    case SDLK_MINUS : keys[ 57 ] = false; break;
-                    case SDLK_F1 : keys[ 58 ] = false; break;
-                    case SDLK_F2 : keys[ 59 ] = false; break;
-                    case SDLK_F3 : keys[ 60 ] = false; break;
-                    case SDLK_F4 : keys[ 61 ] = false; break;
-                    case SDLK_F5 : keys[ 62 ] = false; break;
-                    case SDLK_F6 : keys[ 63 ] = false; break;
-                    case SDLK_F7 : keys[ 64 ] = false; break;
-                    case SDLK_F8 : keys[ 65 ] = false; break;
-                    case SDLK_F9 : keys[ 66 ] = false; break;
-                    case SDLK_F10: keys[ 67 ] = false; break;
-                    case SDLK_F11: keys[ 68 ] = false; break;
-                    case SDLK_F12: keys[ 69 ] = false; break;
-                    case SDLK_LEFT : keys[ 70 ] = false; break;
-                    case SDLK_RIGHT : keys[ 71 ] = false; break;
-                    case SDLK_UP : keys[ 72 ] = false; break;
-                    case SDLK_DOWN : keys[ 73 ] = false; break;
-                    case SDLK_INSERT : keys[ 74 ] = false; break;
-                    case SDLK_HOME : keys[ 75 ] = false; break;
-                    case SDLK_DELETE : keys[ 76 ] = false; break;
-                    case SDLK_END : keys[ 77 ] = false; break;
-                    case SDLK_PAGEUP : keys[ 78 ] = false; break;
-                    case SDLK_PAGEDOWN : keys[ 79 ] = false; break;
-                    case SDLK_F13 : keys[ 80 ] = false; break;
-                    case SDLK_F14 : keys[ 81 ] = false; break;
-                    case SDLK_F15 : keys[ 82 ] = false; break;
+                    case SDLK_a : Keys.hold[ 0 ] = false; break;
+                    case SDLK_b : Keys.hold[ 1 ] = false; break;
+                    case SDLK_c : Keys.hold[ 2 ] = false; break;
+                    case SDLK_d : Keys.hold[ 3 ] = false; break;
+                    case SDLK_e : Keys.hold[ 4 ] = false; break;
+                    case SDLK_f : Keys.hold[ 5 ] = false; break;
+                    case SDLK_g : Keys.hold[ 6 ] = false; break;
+                    case SDLK_h : Keys.hold[ 7 ] = false; break;
+                    case SDLK_i : Keys.hold[ 8 ] = false; break;
+                    case SDLK_j : Keys.hold[ 9 ] = false; break;
+                    case SDLK_k : Keys.hold[ 10 ] = false; break;
+                    case SDLK_l : Keys.hold[ 11 ] = false; break;
+                    case SDLK_m : Keys.hold[ 12 ] = false; break;
+                    case SDLK_n : Keys.hold[ 13 ] = false; break;
+                    case SDLK_o : Keys.hold[ 14 ] = false; break;
+                    case SDLK_p : Keys.hold[ 15 ] = false; break;
+                    case SDLK_q : Keys.hold[ 16 ] = false; break;
+                    case SDLK_r : Keys.hold[ 17 ] = false; break;
+                    case SDLK_s : Keys.hold[ 18 ] = false; break;
+                    case SDLK_t : Keys.hold[ 19 ] = false; break;
+                    case SDLK_u : Keys.hold[ 20 ] = false; break;
+                    case SDLK_v : Keys.hold[ 21 ] = false; break;
+                    case SDLK_w : Keys.hold[ 22 ] = false; break;
+                    case SDLK_x : Keys.hold[ 23 ] = false; break;
+                    case SDLK_y : Keys.hold[ 24 ] = false; break;
+                    case SDLK_z : Keys.hold[ 25 ] = false; break;
+                    case SDLK_1 : Keys.hold[ 26 ] = false; break;
+                    case SDLK_2 : Keys.hold[ 27 ] = false; break;
+                    case SDLK_3 : Keys.hold[ 28 ] = false; break;
+                    case SDLK_4 : Keys.hold[ 29 ] = false; break;
+                    case SDLK_5 : Keys.hold[ 30 ] = false; break;
+                    case SDLK_6 : Keys.hold[ 31 ] = false; break;
+                    case SDLK_7 : Keys.hold[ 32 ] = false; break;
+                    case SDLK_8 : Keys.hold[ 33 ] = false; break;
+                    case SDLK_9 : Keys.hold[ 34 ] = false; break;
+                    case SDLK_SPACE : Keys.hold[ 35 ] = false; break;
+                    case SDLK_ESCAPE : Keys.hold[ 36 ] = false; break;
+                    case SDLK_LALT : Keys.hold[ 37 ] = false; break;
+                    case SDLK_LCTRL : Keys.hold[ 38 ] = false; break;
+                    case SDLK_LSHIFT : Keys.hold[ 39 ] = false; break;
+                    case SDLK_CAPSLOCK : Keys.hold[ 40 ] = false; break;
+                    case SDLK_TAB : Keys.hold[ 41 ] = false; break;
+                    case SDLK_BACKQUOTE : Keys.hold[ 42 ] = false; break;
+                    case SDLK_COMMA : Keys.hold[ 43 ] = false; break;
+                    case SDLK_PERIOD : Keys.hold[ 44 ] = false; break;
+                    case SDLK_RALT : Keys.hold[ 45 ] = false; break;
+                    case SDLK_RCTRL : Keys.hold[ 46 ] = false; break;
+                    case SDLK_RSHIFT : Keys.hold[ 47 ] = false; break;
+                    case SDLK_SLASH : Keys.hold[ 48 ] = false; break;
+                    case SDLK_SEMICOLON : Keys.hold[ 49 ] = false; break;
+                    case SDLK_QUOTE : Keys.hold[ 50 ] = false; break;
+                    case SDLK_RETURN : Keys.hold[ 51 ] = false; break;
+                    case SDLK_LEFTBRACKET : Keys.hold[ 52 ] = false; break;
+                    case SDLK_RIGHTBRACKET : Keys.hold[ 53 ] = false; break;
+                    case SDLK_BACKSLASH : Keys.hold[ 54 ] = false; break;
+                    case SDLK_BACKSPACE : Keys.hold[ 55 ] = false; break;
+                    case SDLK_EQUALS : Keys.hold[ 56 ] = false; break;
+                    case SDLK_MINUS : Keys.hold[ 57 ] = false; break;
+                    case SDLK_F1 : Keys.hold[ 58 ] = false; break;
+                    case SDLK_F2 : Keys.hold[ 59 ] = false; break;
+                    case SDLK_F3 : Keys.hold[ 60 ] = false; break;
+                    case SDLK_F4 : Keys.hold[ 61 ] = false; break;
+                    case SDLK_F5 : Keys.hold[ 62 ] = false; break;
+                    case SDLK_F6 : Keys.hold[ 63 ] = false; break;
+                    case SDLK_F7 : Keys.hold[ 64 ] = false; break;
+                    case SDLK_F8 : Keys.hold[ 65 ] = false; break;
+                    case SDLK_F9 : Keys.hold[ 66 ] = false; break;
+                    case SDLK_F10: Keys.hold[ 67 ] = false; break;
+                    case SDLK_F11: Keys.hold[ 68 ] = false; break;
+                    case SDLK_F12: Keys.hold[ 69 ] = false; break;
+                    case SDLK_LEFT : Keys.hold[ 70 ] = false; break;
+                    case SDLK_RIGHT : Keys.hold[ 71 ] = false; break;
+                    case SDLK_UP : Keys.hold[ 72 ] = false; break;
+                    case SDLK_DOWN : Keys.hold[ 73 ] = false; break;
+                    case SDLK_INSERT : Keys.hold[ 74 ] = false; break;
+                    case SDLK_HOME : Keys.hold[ 75 ] = false; break;
+                    case SDLK_DELETE : Keys.hold[ 76 ] = false; break;
+                    case SDLK_END : Keys.hold[ 77 ] = false; break;
+                    case SDLK_PAGEUP : Keys.hold[ 78 ] = false; break;
+                    case SDLK_PAGEDOWN : Keys.hold[ 79 ] = false; break;
+                    case SDLK_F13 : Keys.hold[ 80 ] = false; break;
+                    case SDLK_F14 : Keys.hold[ 81 ] = false; break;
+                    case SDLK_F15 : Keys.hold[ 82 ] = false; break;
                 }
                 break;
                 case SDL_MOUSEBUTTONDOWN:
                 switch( e.button.button )
                 {
-                    case SDL_BUTTON_LEFT: mouse.hold[ 0 ] = true; break;
-                    case SDL_BUTTON_RIGHT: mouse.hold[ 1 ] = true; break;
-                    case SDL_BUTTON_MIDDLE: mouse.hold[ 2 ] = true; break;
+                    case SDL_BUTTON_LEFT: Mouse.hold[ 0 ] = true; break;
+                    case SDL_BUTTON_RIGHT: Mouse.hold[ 1 ] = true; break;
+                    case SDL_BUTTON_MIDDLE: Mouse.hold[ 2 ] = true; break;
                 }
                 break;
                 case SDL_MOUSEBUTTONUP:
                 switch( e.button.button )
                 {
-                    case SDL_BUTTON_LEFT: mouse.hold[ 0 ] = false; break;
-                    case SDL_BUTTON_RIGHT: mouse.hold[ 1 ] = false; break;
-                    case SDL_BUTTON_MIDDLE: mouse.hold[ 2 ] = false; break;
+                    case SDL_BUTTON_LEFT: Mouse.hold[ 0 ] = false; break;
+                    case SDL_BUTTON_RIGHT: Mouse.hold[ 1 ] = false; break;
+                    case SDL_BUTTON_MIDDLE: Mouse.hold[ 2 ] = false; break;
                 }
                 break;
                 case SDL_MOUSEWHEEL:
                 if( e.wheel.y > 0 )
                 {
-                    mouse.hold[ CYCM_WHEELUP ] = true;
+                    Mouse.hold[ CYCM_WHEELUP ] = true;
                 } 
                 else if( e.wheel.y < 0 )
                 {
-                    mouse.hold[ CYCM_WHEELDOWN ] = true;
+                    Mouse.hold[ CYCM_WHEELDOWN ] = true;
                 }
                 break;
                 case SDL_MOUSEMOTION:
-                mouse.velocity = { e.motion.xrel, e.motion.yrel };
+                Mouse.velocity = { e.motion.xrel, e.motion.yrel };
                 break;
             }
             switch( e.window.event )
@@ -941,113 +1136,71 @@ int main()
                     Shaders = LoadShaders();
                 break;
             }
-            if ( e.type == SDL_QUIT )//&& !( keys[ CYCK_LALT ] && keys[ CYCK_F4 ] ) )
+            if ( e.type == SDL_QUIT )//&& !( Keys.hold[ CYCK_LALT ] && Keys.hold[ CYCK_F4 ] ) )
             {
                 runtime_status |= CYC_STATUS_QUIT;
                 break;
             }
         }
+        //=====================================PRE-LOGIC=========================================
+        for( int i = 0; i < Keys.hold.size(); ++i )
+        {
+            Keys.pulse[ i ] = Keys.hold[ i ] && !Keys.holdCpy[ i ];
+        }
+        for( int i = 0; i < Mouse.hold.size(); ++i )
+        {
+            Mouse.pulse[ i ] = Mouse.hold[ i ] && !Mouse.holdCpy[ i ];
+        }
+        if ( Keys.pulse[ CYCK_F1 ] )
+        {
+            for ( auto o : Lua_Scripts )
+            {
+                lua_close( o.L );
+            }
+            Lua_Scripts.clear( );
+            Lua_Scripts = InitLua( );
+        }
+        //===================================LUA SCRIPT UPDATING==============================
+        for ( auto u : Lua_Scripts )
+        {
+            auto o = &u;
+
+            lua_getglobal( o->L, "Update" );
+            if ( lua_isfunction( o->L, -1 ) )
+            {
+                if ( !cyc::CheckLua( o->L, lua_pcall( o->L, 0, 0, 0)) )
+                {
+                    #ifdef SCRIPT_VERBOSE
+                    cyc_log( "Lua err: Error when calling \'Update\'\n" );
+                    #endif
+                }
+            }
+        }
+
+        if ( cyc::CompareFlags( WindowScriptStats, 1 ) )
+        {
+            WindowScriptStats &= !1;
+            waitAllFences( frames );
+            //mainwindow.size.width = e.window.data1;
+            //mainwindow.size.height = e.window.data2;
+            cyc::RqueueUse( SwapchainDeletionQueue );
+            SwapchainDeletionQueue.clear();
+            cyc::RCqueueUse( &Shaders[ 0 ].Deletion );
+
+
+            (swipychain)(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
+            Shaders = LoadShaders();
+        }
+        
         //=======================================LOGIC===========================================
         //cyc::CheckStopwatch(frame_delta).result.milliseconds;
-        float MovementScalar = .8f;
-        for( int i = 0; i < keys.size(); ++i )
-        {
-            keysPulse[ i ] = keys[ i ] && !keysCpy[ i ];
-        }
-        for( int i = 0; i < mouse.hold.size(); ++i )
-        {
-            mouse.pulse[ i ] = mouse.hold[ i ] && !mouse.holdCpy[ i ];
-        }
-
-        if( keysPulse[ CYCK_F8 ] )
-        {
-            waitAllFences( frames );
-            cyc::RqueueUse( SwapchainDeletionQueue );
-            SwapchainDeletionQueue.clear();
-            cyc::RCqueueUse( &Shaders[ 0 ].Deletion );
-
-            (swipychain)(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
-            Shaders = LoadShaders();
-        }
-        else if( keysPulse[ CYCK_F3 ] )
-        {
-            waitAllFences( frames );
-            cyc::RqueueUse( SwapchainDeletionQueue );
-            SwapchainDeletionQueue.clear();
-            cyc::RCqueueUse( &Shaders[ 0 ].Deletion );
-
-            (swipychain)(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
-            Shaders = LoadShaders();
-        }
-        else if( keysPulse[ CYCK_F4 ] )
-        {
-            reloadMeshes( &meshesToLoad, &meshes );
-        }
-
-        if( mouse.hold[ CYCM_WHEELUP ] )
-        {
-            Cam.pos.z += .8f;
-        }
-        else if( mouse.hold[ CYCM_WHEELDOWN ] )
-        {
-            Cam.pos.z -= .8f;
-        }
-
-        //if( mouse.hold[ CYCM_RIGHT ] && keys[ CYCK_LCTRL] && ( mouse.velocity.x > 1 | mouse.velocity.x < -1 ) )
-        //{
-        //    Cam.pos.z += mouse.velocity.x / 30.f;
-        //}
-        if( mouse.hold[ CYCM_MIDDLE ] )
-        {
-            Cam.pos.y += mouse.velocity.y / 40.f;
-            //Cam.orbit += mouse.velocity.x / 2.f;
-        }
-        if( mouse.hold[ CYCM_RIGHT ] )
-        {
-            //SDL_ShowCursor( SDL_FALSE );
-            //SDL_SetWindowGrab( mainwindow.sdl_handle, SDL_TRUE );
-            Cam.rotation.x += mouse.velocity.x / 5.f;
-            Cam.rotation.y += mouse.velocity.y / 5.f;
-            //SDL_WarpMouseInWindow( mainwindow.sdl_handle, mainwindow.size.width/2, mainwindow.size.height/2 );
-        }
-        else
-        {
-            //SDL_ShowCursor( SDL_TRUE );
-            //SDL_SetWindowGrab( mainwindow.sdl_handle, SDL_FALSE );
-        }
-        if( Cam.rotation.y > 89.f )
-        {
-            Cam.rotation.y = 89.f;
-        }
-        else if( Cam.rotation.y < -89.f )
-        {
-            Cam.rotation.y = -89.f;
-        }
-
-        if( keys[ CYCK_LCTRL ] )
-            MovementScalar = 0.2f;
-
-        if( keys[ CYCK_W ] )
-        {
-            MovementInputs.x += 1.f * MovementScalar;
-        }
-        if( keys[ CYCK_S ] )
-        {
-            MovementInputs.x -= 1.f * MovementScalar;
-        }
-        if( keys[ CYCK_D ] )
-        {
-            MovementInputs.y += 1.f * MovementScalar;
-        }
-        if( keys[ CYCK_A ] )
-        {
-            MovementInputs.y -= 1.f * MovementScalar;
-        }
+        
+        
         //=====================================RENDERING=========================================
         #if 1
         //Frame data of the current frame
 
-        auto curFrame = &frames[GET_FRAME()];
+        auto curFrame = &frames[ GET_FRAME() ];
         //Wait for the fences so we stay synced with the GPU, then reset the fence so it can be used again
         VK_CHECK(vkWaitForFences( vkbDevice.device, 1, &curFrame->render_fence, true, FRAME_WAIT ));
         VK_CHECK(vkResetFences( vkbDevice.device, 1, &curFrame->render_fence ));
@@ -1057,19 +1210,30 @@ int main()
         VK_CHECK(vkAcquireNextImageKHR( vkbDevice.device, swpchain.swapchain, FRAME_WAIT, curFrame->present_semaphore, nullptr, &swpchainIndex ));
 
         //Because we KNOW that our command buffer is no longer in use, we will reset it
-        VK_CHECK(vkResetCommandBuffer( curFrame->cmdBuf, NULL ));
+        VK_CHECK( vkResetCommandBuffer( curFrame->cmdBuf, NULL ) );
 
         //A variable with our current frame command buffer. Just for ease of use
         auto cmd = curFrame->cmdBuf;
 
         //Lets get our command buffer all lubed up. the cmd buffer will only be submitted once, at the end of the frame, so lets tell vulkan that
         auto cmdBeginInfo = vkinit::command_buffer_begin_info( VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT );
-        VK_CHECK(vkBeginCommandBuffer( cmd, &cmdBeginInfo ));
+        VK_CHECK( vkBeginCommandBuffer( cmd, &cmdBeginInfo ) );
+
+        for ( auto u : Lua_Scripts )
+        {
+            auto o = &u;
+
+            lua_getglobal( o->L, "Render" );
+            if ( lua_isfunction( o->L, -1 ) )
+            {
+                if ( !cyc::CheckLua( o->L, lua_pcall( o->L, 0, 0, 0)) )
+                printf( "Lua err: Error when calling \'Render\'\n" );
+            }
+        }
 
         VkClearValue clearColor;
-        glm::vec4 rgba = { .2f, .2f, .2f, 1.f };
 
-        clearColor.color = { rgba.r, rgba.g, rgba.b, rgba.a };
+        clearColor.color = { Clearrgba.r, Clearrgba.g, Clearrgba.b, Clearrgba.a };
 
 
         //Now its time to stretch out the render pass for use, lets give it our current frame buffer using the swapchain image index
@@ -1093,7 +1257,7 @@ int main()
         //make a model view matrix for rendering the object
         using glm::radians; using glm::vec3;
 
-        Cam.pos += glm::vec3( MovementInputs.x * -sin(radians(Cam.rotation.x)) * cos(radians(Cam.rotation.y)) + MovementInputs.y * -cos(radians(Cam.rotation.x)),
+        /* Cam.pos += glm::vec3( MovementInputs.x * -sin(radians(Cam.rotation.x)) * cos(radians(Cam.rotation.y)) + MovementInputs.y * -cos(radians(Cam.rotation.x)),
             MovementInputs.x * -sin(radians(Cam.rotation.y)),
             MovementInputs.x * cos(radians(Cam.rotation.x)) * cos(radians(Cam.rotation.y)) + MovementInputs.y * -sin(radians(Cam.rotation.x)) );
 
@@ -1108,9 +1272,9 @@ int main()
         glm::mat4 projection = glm::perspective(radians(Cam.FOV), (float)mainwindow.size.width / (float)mainwindow.size.height, Cam.cuttof.x, Cam.cuttof.y);
         projection[1][1] *= -1;
 
-        for( int i = 0; i < meshes.size(); ++i )
+        for( int i = 0; i < Meshes.size(); ++i )
         {
-            VkBuffer buf = meshes[ i ]._vertexBuffer._buffer;
+            VkBuffer buf = Meshes[ i ]._vertexBuffer._buffer;
             VkDeviceSize offset = 0;
             //time to bind this massive dong i mean triangle why am i so horny
             vkCmdBindVertexBuffers( cmd, 0, 1, &buf, &offset );
@@ -1135,7 +1299,7 @@ int main()
 
             vkCmdDraw( cmd, meshes[ i ].vertices.size(), 1, 0, i );
         }
-
+        */
         //======================================RENDERPASS ENDS HERE IDIOT=========================================
         vkCmdEndRenderPass( cmd );
 
@@ -1175,8 +1339,8 @@ int main()
         VK_CHECK(vkQueuePresentKHR( Queue, &presentInfo ));
 
         //cyc::CheckStopwatch(frameDelta).result.milliseconds;
-        keysCpy = keys;
-        mouse.holdCpy = mouse.hold;
+        Keys.holdCpy = Keys.hold;
+        Mouse.holdCpy = Mouse.hold;
 
         ++FRAME_NUMBER;
         #else
@@ -1207,7 +1371,10 @@ int main()
     string wh = string_format( "%i\n%i\n", w, h );
 
     SDL_GetWindowPosition( mainwindow.sdl_handle, &w, &h );
-    wh += string_format( "%i\n%i\n%s", w, h, config[4].c_str() );
+    bool maxed = false;
+    if ( cyc::CompareFlags( SDL_GetWindowFlags( mainwindow.sdl_handle ), SDL_WINDOW_MAXIMIZED ))
+        maxed = true;
+    wh += string_format( "%i\n%i\n%s\n%i", w, h, config[4].c_str(), maxed );
     cyc::WriteFile( "cfg/config.txt", wh );
     
     cyc::RCqueueUse( &Shaders[ 0 ].Deletion );
@@ -1216,7 +1383,6 @@ int main()
     
     SDL_Quit();
 
-    string ending;
-    std::getline( std::cin, ending );
+    system( "pause" );
     return EXIT_SUCCESS;
 }

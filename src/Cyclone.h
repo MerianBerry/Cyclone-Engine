@@ -1,5 +1,7 @@
 #pragma once
 
+#include <iostream>
+
 #ifdef __clang__
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Wtautological-compare" // comparison of unsigned expression < 0 is always false
@@ -192,50 +194,50 @@ namespace cyc
 
     struct cmd_queue
     {
-        VkQueue queue;
-        Uint32 family;
+        VkQueue         queue;
+        Uint32          family;
     };
 
     struct cmd_obj
     {
-        VkCommandPool pool;
-        VkCommandBuffer buffer;
+        VkCommandPool           pool;
+        VkCommandBuffer         buffer;
     };
 
     struct subpass
     {
-        VkSubpassDescription vksubpass = {};
-        VkPipelineBindPoint pipeline_bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        VkSubpassDescription    vksubpass = {};
+        VkPipelineBindPoint     pipeline_bind_point = VK_PIPELINE_BIND_POINT_GRAPHICS;
     };
 
     struct frameData {
-        VkSemaphore present_semaphore, render_semaphore;
-        VkFence render_fence;
+        VkSemaphore             present_semaphore, render_semaphore;
+        VkFence                 render_fence;
 
-        VkCommandPool cmdPool;
-        VkCommandBuffer cmdBuf;
+        VkCommandPool           cmdPool;
+        VkCommandBuffer         cmdBuf;
     };
 
     struct Shader
     {
-        VkPipeline Pipeline;
-        VkPipelineLayout PipelineLayout;
-        vector< VkShaderModule > ShaderModules; 
+        VkPipeline                  Pipeline;
+        VkPipelineLayout            PipelineLayout;
+        vector< VkShaderModule >    ShaderModules; 
 
-        string Name;
-        Uint32 Type;
-        uint32_t FillMode;
-        string VertShader;
-        string FragShader;
-        string CompShader;
+        string                      Name;
+        Uint32                      Type;
+        uint32_t                    FillMode;
+        string                      VertShader;
+        string                      FragShader;
+        string                      CompShader;
 
-        Lambda_vec< void > Deletion;
+        Lambda_vec< void >          Deletion;
     };
 
     struct AllocationBuffer
     {
-        VkBuffer _buffer;
-        VmaAllocation _allocation;
+        VkBuffer            _buffer;
+        VmaAllocation       _allocation;
     };
 
     struct VertexInputDesc
@@ -248,47 +250,61 @@ namespace cyc
 
     struct Vertex
     {
-        glm::vec3 position;
-        glm::vec3 normal;
-        glm::vec3 color;
+        glm::vec3           position;
+        glm::vec3           normal;
+        glm::vec3           color;
 
         static VertexInputDesc GetVertexDescription();
     };
 
     struct Mesh
     {
-        glm::vec3 position = { 0.f, 0.f, 0.f };
-        glm::vec3 scale = { 1.f, 1.f, 1.f };
-        glm::vec3 rotation = { 0.f, 0.f, 0.f };
-        vector< Vertex > vertices;
-        string name;
+        glm::vec3           position = { 0.f, 0.f, 0.f };
+        glm::vec3           scale = { 1.f, 1.f, 1.f };
+        glm::vec3           rotation = { 0.f, 0.f, 0.f };
+        vector< Vertex >    vertices;
+        string              name;
+        bool                render = false;
 
-        AllocationBuffer _vertexBuffer;
+        AllocationBuffer    _vertexBuffer;
     };
     using Dmesh = Dtype< Mesh >;
 
     struct MeshPushConstant
     {
-        glm::vec4 data;
-        glm::mat4 renderMatrix;
+        glm::vec4           data;
+        glm::mat4           renderMatrix;
     };
 
     struct Camera
     {
-        glm::vec3 pos = { 0.f, 0.f, 0.f };
-        glm::vec3 rotation = { 0.f, 0.f, 0.f };
-        float FOV = 70.f;
+        glm::vec3           pos = { 0.f, 0.f, 0.f };
+        glm::vec3           rotation = { 0.f, 0.f, 0.f };
+        float               FOV = 70.f;
 
-        glm::vec2 cuttof = { .1f, 200.f };
-        float orbit = 0.f;
+        glm::vec2           cuttof = { .1f, 200.f };
+        float               orbit = 0.f;
+    };
+    struct Keyboard
+    {
+        array< bool, 83 >    hold = { false };
+        array< bool, 83 >    holdCpy = { false };
+        array< bool, 83 >    pulse = { false };
     };
     struct Mouse
     {
-        array< bool, 5 > hold = { false };
-        array< bool, 5 > holdCpy = { false };
-        array< bool, 5 > pulse = { false };
+        array< bool, 5 >    hold = { false };
+        array< bool, 5 >    holdCpy = { false };
+        array< bool, 5 >    pulse = { false };
 
-        glm::vec2 velocity = { 0.f, 0.f };
+        glm::vec2           velocity = { 0.f, 0.f };
+    };
+
+    struct LuaScript
+    {
+        lua_State          *L;
+        string              name;
+        bool                active;
     };
 
     /*struct instance
@@ -401,6 +417,46 @@ namespace cyc
     Lresult< vector< Mesh >> LoadMeshes( vector< string > paths);
 
     Lresult< vector< Mesh >> UploadMeshes( vector< Mesh > *meshes, VmaAllocator allocator, Lambda_vec< void > *deletionQueue );
+
+    inline bool __cdecl CheckLua( lua_State *L, int r )
+    {
+        if ( r != LUA_OK )
+        {
+            string errmsg = lua_tostring( L, -1 );
+            cyc_log( "Lua err: %s\n", errmsg.c_str() )
+            return false;
+        }
+        return true;
+    }
+
+    template< typename T >
+    inline T __cdecl UnorderedGet( std::unordered_map< string, T > *map, string ind )
+    {
+        //search for the object, and return nullptr if not found
+        T r;
+        auto it = map->find( ind );
+        if (it == map->end()) {
+            return r;
+        }
+        else
+        {
+            return (*it).second;
+        }
+    }
+
+    template< typename T >
+    inline bool __cdecl UnorderedExists( std::unordered_map< string, T > *map, string ind )
+    {
+        //search for the object, and return nullptr if not found
+        auto it = map->find( ind );
+        if (it == map->end()) {
+            return false;
+        }
+        else
+        {
+            return true;
+        }
+    }
 }
 
 using cyc::Lambda;

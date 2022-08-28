@@ -1338,3 +1338,17 @@ TestDistro/lua54.dll
 TestDistro/Lua/liblua54.a
 TestDistro/scripts/test.lua
 scripts/test.lua
+CycloneDistro/Cyclone.lua
+CycloneDistro/lua54.dll
+CycloneDistro/SDL2.dll
+CycloneDistro/cfg/shaderload.txt
+CycloneDistro/Lua/liblua54.a
+CycloneDistro/scripts/test.lua
+CycloneDistro/scripts/test2.lua
+CycloneDistro/shaders/basicFrag.spv
+CycloneDistro/shaders/basicVert.spv
+CycloneDistro/shaders/default_lit.frag.spv
+CycloneDistro/shaders/textured_lit.frag.spv
+CycloneDistro/shaders/tri_mesh.vert.spv
+SDL2.dll
+compile.bat
