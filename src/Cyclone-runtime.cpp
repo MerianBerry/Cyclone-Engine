@@ -257,9 +257,10 @@ int main()
     cyc::StopWatch starting_time;
     cyc::StartStopwatch( &starting_time );
 
+    //clear the log file
     cyc::WriteFile("log.txt", "");
 
-	auto sys_start_time = std::chrono::system_clock::to_time_t( std::chrono::system_clock::now() );
+    auto sys_start_time = std::chrono::system_clock::to_time_t( std::chrono::system_clock::now() );
     cyc_log( "Lunarge initiated at %s\n", std::ctime( &sys_start_time ) )
 
     std::thread _nowaitthread( main_, &runtime_status );
@@ -268,6 +269,7 @@ int main()
     cyc::StopWatch stopwatch;
     cyc::StartStopwatch(&stopwatch);
 
+    //Initilise SDL with every subsystem
     if ( SDL_Init(SDL_INIT_EVERYTHING) != 0 )
     {
         cyc_log( "SDL error: SDL failed to initilise :(\n" )
@@ -276,10 +278,12 @@ int main()
     cyc_log( "SDL initiated in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds )
     cyc::ResetStopwatch( &stopwatch );
 
+    //set some main() locals ( very important )
     vkb::InstanceBuilder inst_builder;
     vkb::Device vkbDevice;
     vkb::PhysicalDevice physDevice;
 
+    //We now need to create the vulkan instance, this is one of the most important init sections
     vkb::Instance vkbInstance = inst_builder.set_app_name( "Cyclone engine" )
     .request_validation_layers()
     .require_api_version(1, 3, 0)
@@ -291,16 +295,17 @@ int main()
     #endif
     
 
+    //Pushback the vkb::destroy_instance function, this will be called very last in the deltion queue
     MasterDeletionQueue.push_back(
     [=]()
     {
         vkb::destroy_instance(vkbInstance);
         //cyc_log( "Destroyed vulkan (vkb) instance :)\n" )
     });
-
     cyc_log("Vulkan instance initiated in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds)
     cyc::ResetStopwatch( &stopwatch );
 
+    //Config loading! This mostly/entirely effects the window. theres also some checks for if it exists, or if it doent have anything in it
     if( !cyc::DoesFileExist( "cfg/config.txt" ) )
     {
         cyc::WriteFile( "cfg/config.txt", "" );
@@ -326,6 +331,7 @@ int main()
             mainwindow.pos.y = SDL_WINDOWPOS_CENTERED;
         }
         
+	//Window creation! we already have the config data, so lets make the window with that data. also, we pass the SDL_WINDOW_HIDDEN flag so the window isnt show until runtime. 
         mainwindow.sdl_handle = SDL_CreateWindow(mainwindow.title,
         mainwindow.pos.x,
         mainwindow.pos.y,
@@ -343,6 +349,8 @@ int main()
     }
     
     //==============================GPU SELECTION================================
+    //We want to ask the gpu to have/expose some features, such as wireframe mode (fillModeNonSolid) and > 1.f wide line for wireframe mode (wideLines)
+    //We can then create it using the vkb::Intance, we want it to have vulkan 1.3 minimun. Also, the gpu needs to know where to render, so we set the surface created in window creation
     {
         VkPhysicalDeviceFeatures gpuFeatures = { VK_FALSE };
         gpuFeatures.fillModeNonSolid = VK_TRUE;
@@ -361,6 +369,10 @@ int main()
     cyc::ResetStopwatch(&stopwatch);
     
     //============================DEVICE SELECTION===============================
+    //the vkDevice is one of if not the most important vulkan types in the entire API, nearly everything uses it
+    //IDK what the VkPhysicalDeviceShaderDrawParametersFeatures bullshit is
+    //theeee maintnance4features were important... for something, i forgot what they were doing here
+    //We then simply create the vkbDevice with the features as pNexts
     {
         vkb::DeviceBuilder deviceBuilder{ physDevice };
 
@@ -384,6 +396,8 @@ int main()
     cyc::ResetStopwatch(&stopwatch);
 
     //look at this man
+    //This is the main() local gpu mem allocator. this is used to allocate memory on the gpu, and cpu
+    //We need to give it a decent assortment of data, but we also want to tell it to use vulkan 1.3 ( important )
     VmaAllocator vmaAllocator;
     {
         VmaAllocatorCreateInfo info = {};
@@ -403,6 +417,11 @@ int main()
     std::function<void(VkRenderPass*, vector<VkFramebuffer>*, cyc::swapchain*, cyc::Window*, vkb::Swapchain*)> swipychain([=](VkRenderPass *rdpass, vector<VkFramebuffer> *fmrbufs, cyc::swapchain *swapchain, cyc::Window *window, vkb::Swapchain* swph){
         vkb::SwapchainBuilder vkswapchain_builder{ physDevice, vkbDevice.device, window->surface };
         
+	//ooooooook, here we go. we want it to use the simple SRGB color format, and we want the color space to be nonlinear SRGB
+	//I THINK the format feature means the swapchain stores the image that its presenting
+	//We want to set the old swapchain so vkb is happy during swapchain recreation
+	//We want to set it to relaxed VSYNC, but we can change that to immediate, or regular VSYNC
+	//The swapchain also want to know how much girth it should have, so lets tell it
         auto tmpswapchain = vkswapchain_builder
         .set_desired_format((VkSurfaceFormatKHR){ VK_FORMAT_B8G8R8A8_SRGB, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR })
         .set_format_feature_flags(VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)
@@ -412,18 +431,22 @@ int main()
         .set_desired_extent(window->size.width, window->size.height)
         .build()
         .value();
-        
-
-        *swph = tmpswapchain;
+       
+	
+	//Set the old swapchain to the current build of the swapchain
+	//Modify the pointed swapchain ( the main() local swaphain) (important)
+	*swph = tmpswapchain;
         swapchain->swapchain = tmpswapchain.swapchain;
         swapchain->image_views = tmpswapchain.get_image_views().value();
         swapchain->image_format = tmpswapchain.image_format;
         swapchain->images = tmpswapchain.get_images().value();
         swapchain->presentmode = (VkPresentModeKHR)CYC_PRESENT_MODE_VSYNC;
 
+	//2 vectors to of swaphchain image views that dont need to exist
         vector<VkImageView> h1 = swph->get_image_views().value();
         vector<VkImageView> h2 = tmpswapchain.get_image_views().value();
 
+	//Destroy the said swapchain image views
         for ( auto o : h2 )
         {
             //cyc_log( "tmpswapchain: %p\n", o )
@@ -435,7 +458,8 @@ int main()
             //cyc_log( "swph: %p\n", o )
             vkDestroyImageView( vkbDevice.device, o, nullptr );
         }
-
+	
+	//Make sure to pushback the command to delete the actual image views, but since we dont want to do it just yet, we need to put it in the swapchain deletion queue
         SwapchainDeletionQueue.push_back([=]()
         {
             for ( auto o : swapchain->image_views )
@@ -444,7 +468,9 @@ int main()
                 vkDestroyImageView( vkbDevice.device, o, nullptr );
             }
         });
-
+	    
+	 
+	//uhhhh, i dont really know how to explain this
         cyc::attachment_info mainColorInfo;
         //1 sample, we won't be doing MSAA
         mainColorInfo.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -467,12 +493,13 @@ int main()
         mainColorReference.attachment = 0;
         mainColorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        cyc::subpass_description subpass;
+        cyc::subpass_description subpass = { 0 };
         subpass.colorAttachmentCount = 1;
         subpass.pipelineBindPoint = (VkPipelineBindPoint)CYC_PIPELINE_BIND_POINT_GRAPHICS;
 
         cyc::attachment_reference attachmentrefs[] = { mainColorReference };
         subpass.pColorAttachments = attachmentrefs;
+	/*
         subpass.inputAttachmentCount = NULL;
         subpass.pInputAttachments = NULL;
         subpass.pResolveAttachments = NULL;
@@ -481,6 +508,7 @@ int main()
         subpass.pResolveAttachments = NULL;
         subpass.pDepthStencilAttachment = NULL;
         subpass.flags = 0;
+	*/
 
         VkSubpassDependency dependency = {};
         dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
@@ -598,23 +626,23 @@ int main()
         
 
         //begin the command buffer recording. We will use this command buffer exactly once before resetting, so we tell vulkan that
-	    VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
         VK_CHECK(vkBeginCommandBuffer( cmd, &cmdBeginInfo ));
 
-        //hit up the lambda and give it our juicy cock i mean command buffer
+        //hit up the lambda and give it our juicy command buffer
         _func( cmd );
         
         VK_CHECK(vkEndCommandBuffer( cmd ));
 
-        //for the commands into submition i mean submit the commands
+        //force the commands into submition i mean submit the commands
         VkSubmitInfo submit = vkinit::submit_info(&cmd);
         
         //submit command buffer to the queue and execute it.
         // uploadFence will now block until the graphic commands finish execution
         VK_CHECK(vkQueueSubmit( vkbDevice.get_queue((vkb::QueueType)CYC_QUEUETYPE_GRAPHICS).value(), 1, &submit, uploadFence ));
 
-        //why am i so horny for dick?
+        //Lets wait for the queue to finish, then reset the fences as they are done with their job
         vkWaitForFences( vkbDevice.device, 1, &uploadFence, true, std::numeric_limits<Uint64>::max() );
         vkResetFences( vkbDevice.device, 1, &uploadFence );
 
@@ -710,7 +738,7 @@ int main()
                         runtime_status |= CYC_STATUS_QUIT;
                         break;
                     }
-                    //lets get this bread i mean file, we want to load it with the cursor at the end and in binary
+                    //lets get this bread i mean file, we want to load it with the cursor at the end and in binary (beautiful)
                     std::ifstream file( nO.c_str(), std::ios::ate | std::ios::binary );
                     if( !file.is_open() )
                     {
@@ -761,7 +789,7 @@ int main()
                     //first, as per the standard, lets get the pipeline layout ready for use
                     auto pipelineLayoutInfo = vkinit::pipeline_layout_create_info();
 
-                    //create our cock i mean mesh constant
+                    //create our mesh constant
                     VkPushConstantRange meshPushConst{};
                     //this push constant range starts at the beginning
                     meshPushConst.offset = 0;
@@ -779,14 +807,14 @@ int main()
                     cyc_log( "Created pipeline layout %p\n", o->PipelineLayout )
                     #endif
 
-                    //Im getting turned on already! lets put those throbing shader modules to use~
+                    //lets put those throbing shader modules to use~ (what??)
                     auto basicVert = o->ShaderModules[0];
                     auto basicFrag = o->ShaderModules[1];
 
-                    //lets build this cock! (what am i even saying)
+                    //lets get the PipelineBuilder struct for sorting reasons
                     cyc::PipelineBuilder PipelineBuilder;
 
-                    //we need to give our pipeline our shaders to work, obviously
+                    //we need to give our shaders to the pipeline in order work, obviously
                     PipelineBuilder._shaderStages.push_back(
                         vkinit::pipeline_shader_stage_create_info( VK_SHADER_STAGE_VERTEX_BIT, basicVert )
                     );
@@ -1212,7 +1240,7 @@ int main()
         //Because we KNOW that our command buffer is no longer in use, we will reset it
         VK_CHECK( vkResetCommandBuffer( curFrame->cmdBuf, NULL ) );
 
-        //A variable with our current frame command buffer. Just for ease of use
+        //A cmdbuffer with our current frame command buffer. Just for ease of use
         auto cmd = curFrame->cmdBuf;
 
         //Lets get our command buffer all lubed up. the cmd buffer will only be submitted once, at the end of the frame, so lets tell vulkan that
@@ -1323,7 +1351,7 @@ int main()
         VK_CHECK(vkQueueSubmit( Queue, 1, &submitInfo, curFrame->render_fence ));
         //cyc_log("uhhh %p\n", renderPass)
 
-        //Lets present this bitch, we have our rendered stuff, so we can now present it to the swapchain, hope it likes it...
+        //Its presentation time, we have our rendered stuff, so we can now present it to the swapchain, hope it likes it...
         VkPresentInfoKHR presentInfo = vkinit::present_info();
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = &swpchain.swapchain;
