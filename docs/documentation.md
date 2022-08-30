@@ -6,7 +6,7 @@ This file will include the entirety of the documentation for the engine because 
 1. (Lua)[#lua-integrationextending]
 
 ### *Lua integration/extending*
-So, you can look at the engines lua file at (Cyclone.lua)[../Cyclone.lua].
+So, you can look at the engines lua file at (Cyclone.lua)[../../Cyclone.lua].
 
 ```lua
 GetKeyState( key -> string, mode -> string ) -> bool
