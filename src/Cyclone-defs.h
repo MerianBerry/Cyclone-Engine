@@ -108,7 +108,7 @@ enum CYC_SHADER
     CYC_SHADER_GRAPHICS_MESH = 1U,
     CYC_SHADER_COMPUTE = 2U
 };
-enum LUANR_KEY
+enum CYC_KEY
 {
     CYCK_A = 0U,
     CYCK_B = 1U,

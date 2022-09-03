@@ -359,7 +359,7 @@ int main()
             mainwindow.pos.y = SDL_WINDOWPOS_CENTERED;
         }
         
-	//Window creation! we already have the config data, so lets make the window with that data. also, we pass the SDL_WINDOW_HIDDEN flag so the window isnt show until runtime. 
+	    //Window creation! we already have the config data, so lets make the window with that data. also, we pass the SDL_WINDOW_HIDDEN flag so the window isnt show until runtime. 
         mainwindow.sdl_handle = SDL_CreateWindow(mainwindow.title,
         mainwindow.pos.x,
         mainwindow.pos.y,
@@ -470,11 +470,11 @@ int main()
         swapchain->images = tmpswapchain.get_images().value();
         swapchain->presentmode = (VkPresentModeKHR)CYC_PRESENT_MODE_VSYNC;
 
-	//2 vectors to of swaphchain image views that dont need to exist
+	    //2 vectors to of swaphchain image views that dont need to exist
         vector<VkImageView> h1 = swph->get_image_views().value();
         vector<VkImageView> h2 = tmpswapchain.get_image_views().value();
 
-	//Destroy the said swapchain image views
+	    //Destroy the said swapchain image views
         for ( auto o : h2 )
         {
             //cyc_log( "tmpswapchain: %p\n", o )
@@ -487,7 +487,7 @@ int main()
             vkDestroyImageView( vkbDevice.device, o, nullptr );
         }
 	
-	//Make sure to pushback the command to delete the actual image views, but since we dont want to do it just yet, we need to put it in the swapchain deletion queue
+	    //Make sure to pushback the command to delete the actual image views, but since we dont want to do it just yet, we need to put it in the swapchain deletion queue
         SwapchainDeletionQueue.push_back([=]()
         {
             for ( auto o : swapchain->image_views )
@@ -498,7 +498,7 @@ int main()
         });
 	    
 	 
-	//uhhhh, i dont really know how to explain this
+	    //uhhhh, i dont really know how to explain this
         cyc::attachment_info mainColorInfo;
         //1 sample, we won't be doing MSAA
         mainColorInfo.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -527,7 +527,7 @@ int main()
 
         cyc::attachment_reference attachmentrefs[] = { mainColorReference };
         subpass.pColorAttachments = attachmentrefs;
-	/*
+	    /*
         subpass.inputAttachmentCount = NULL;
         subpass.pInputAttachments = NULL;
         subpass.pResolveAttachments = NULL;
@@ -536,7 +536,7 @@ int main()
         subpass.pResolveAttachments = NULL;
         subpass.pDepthStencilAttachment = NULL;
         subpass.flags = 0;
-	*/
+	    */
 
         VkSubpassDependency dependency = {};
         dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
