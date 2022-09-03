@@ -1352,3 +1352,9 @@ CycloneDistro/shaders/textured_lit.frag.spv
 CycloneDistro/shaders/tri_mesh.vert.spv
 SDL2.dll
 compile.bat
+CycloneDistro/scripts/New folder/test2.lua
+scripts/New folder/test2.lua
+TestDistro/scripts/New folder/test2.lua
+shaders/basicFrag.spv
+shaders/basicFrag.spv
+src/shaders/basicFrag.frag

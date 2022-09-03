@@ -101,6 +101,25 @@ t.Swapchain = { data = 0, create = function( self, int )
     print ( self.data )
 end }
 
+t.Scene = { data = { meshes = {}, r = 0, g = 0, b = 0, a = 0},
+Submit = function( self )
+
+end,
+DrawMesh = function( self, mesh )
+    self.meshes[ #self.meshes+1 ] = mesh
+end,
+DrawClear = function( self, r, g, b, a )
+    a = a or 255
+    if type( r ) ~= "number" or type( g ) ~= "number" or type( b ) ~= "number" or type( a ) ~= "number" then
+        print "ERROR: DrawClear->a param isn't a number. all params MUST ALWAYS be a number"
+    end
+
+    self.r = self.r * ( 1 - a  / 255 ) + r * ( a / 255 )
+    self.g = self.g * ( 1 - a  / 255 ) + g * ( a / 255 )
+    self.b = self.b * ( 1 - a  / 255 ) + b * ( a / 255 )
+    self.a = self.a * ( 1 - a  / 255 ) + a * ( a / 255 )
+end }
+
 -- Gets the boolean value of the input key. Keys: Use the keys table. Modes: "pulse" and "hold", "pulse" by default
 function t.GetKeyState( key, mode )
     mode = mode or "pulse"
@@ -156,7 +175,7 @@ function t.SetWindowPos( x, y )
 end
 
 function t.SetWindowState( mode )
-
+    cpp_SetWindowState( mode )
 end
 
 return t

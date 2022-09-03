@@ -18,13 +18,22 @@
 		}                                          \
 	} while (0)
 
+
+#ifdef VULKAN_DEBUG
+constexpr bool enableValidation = true;
+#else
+constexpr bool enableValidation = false;
+#endif
+
 cyc::Lambda_vec< void > MasterDeletionQueue;
 cyc::Lambda_vec< void > SwapchainDeletionQueue;
 cyc::Lambda_vec< void > MeshDeletionQueue;
 
 using cyc::Lambda; using std::pair;
 
-constexpr Uint32 FRAME_WAIT = std::numeric_limits< Uint32> ::max();
+constexpr Uint32 FRAME_WAIT = std::numeric_limits< Uint32 >::max();
+constexpr Uint32 WinWMin = 960;
+constexpr Uint32 WinHMin = 540;
 
 vector< Lambda< void >> _NOWAITLIST;
 #define NoWait _NOWAITLIST.push_back
@@ -61,7 +70,7 @@ void main_( Uint32 *status )
         cyc::WaitUS( 5 );
     }
     #ifdef NOWAIT_VERBOSE
-    cyc_log( "No wait thread dead" )
+    cyc_log( "No wait thread dead\n" )
     #endif
 }
 
@@ -170,9 +179,8 @@ int __cdecl lua_SetWindowSize( lua_State *L )
     int h = lua_tonumber( L, 2 );
 
     WindowScriptStats |= 1;
-    mainwindow.size.width = w;
-    mainwindow.size.height = h;
-    SDL_SetWindowSize( mainwindow.sdl_handle, w, h );
+    mainwindow.size.width = ( w < WinWMin ) ? WinWMin : w;
+    mainwindow.size.height = ( h < WinHMin ) ? WinHMin : w;
     return 0;
 }
 
@@ -191,6 +199,18 @@ int __cdecl lua_SetWindowState( lua_State *L )
 {
     string mode = lua_tostring( L, 1 );
     
+    if ( mode == "min" )
+    {
+        WindowScriptStats |= 2 << 0;
+    }
+    else if ( mode == "max" )
+    {
+        WindowScriptStats |= 2 << 1;
+    }
+    else if ( mode == "restore" )
+    {
+        WindowScriptStats |= 2 << 2;
+    }
     return 0;
 }
 
@@ -280,16 +300,27 @@ int main()
     vkb::Device vkbDevice;
     vkb::PhysicalDevice physDevice;
 
-    vkb::Instance vkbInstance = inst_builder.set_app_name( "Cyclone engine" )
+    auto a = []( int d ) -> bool { return d == 6; };
+
+    vkb::Instance vkbInstance = inst_builder
+    .set_app_name( "Cyclone GUI" )
+    .set_engine_name( "Cyclone engine" )
     .request_validation_layers()
     .require_api_version(1, 3, 0)
-    #ifdef VULKAN_DEBUG
-    .use_default_debug_messenger()
-    .build().value();
-    #else
-    .build().value();
-    #endif
-    
+    .set_debug_callback(
+        [] ( VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+	    VkDebugUtilsMessageTypeFlagsEXT messageType,
+	    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+	    void *pUserData ) 
+        -> VkBool32
+        {
+            auto severity = vkb::to_string_message_severity( messageSeverity );
+            auto type = vkb::to_string_message_type( messageType );
+            if ( enableValidation )
+                cyc_log( "SEVERITY[ %s ] TYPE[ %s ]: \n%s\n\n", severity, type, pCallbackData->pMessage );
+            return VK_FALSE;
+        }
+     ).build().value();
 
     MasterDeletionQueue.push_back(
     [=]()
@@ -309,7 +340,7 @@ int main()
     {
         if( config.size() == 0 )
         {
-            cyc::WriteFile( "cfg/config.txt", string_format( "%i\n%i\n%i\n%i\nCyclone\n%i", 960, 540, 0, 0, 0 ) );
+            cyc::WriteFile( "cfg/config.txt", string_format( "%i\n%i\n%i\n%i\nCyclone\n%i", WinWMin, WinHMin, 0, 0, 0 ) );
             config = cyc::GetLines("cfg/config.txt").result;
         }
         mainwindow.size.width = stoi(config[0]);
@@ -320,8 +351,8 @@ int main()
         if ( stoi( config[ 5 ] ) == 1 )
         {
             mainwindow.flags |= SDL_WINDOW_MAXIMIZED;
-            mainwindow.size.width = 960;
-            mainwindow.size.height = 540;
+            mainwindow.size.width = WinWMin;
+            mainwindow.size.height = WinHMin;
             mainwindow.pos.x = SDL_WINDOWPOS_CENTERED;
             mainwindow.pos.y = SDL_WINDOWPOS_CENTERED;
         }
@@ -335,7 +366,7 @@ int main()
 
         if ( stoi( config[ 5 ] ) == 1 )
            SDL_MaximizeWindow( mainwindow.sdl_handle );
-        SDL_SetWindowMinimumSize(mainwindow.sdl_handle, 960, 540);
+        SDL_SetWindowMinimumSize(mainwindow.sdl_handle, WinWMin, WinHMin);
         SDL_Vulkan_CreateSurface(mainwindow.sdl_handle, vkbInstance.instance, &mainwindow.surface);
 
         cyc_log("Window creation has been completed in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds);
@@ -351,8 +382,8 @@ int main()
 
         vkb::PhysicalDeviceSelector phys_selector{ vkbInstance };
         physDevice = phys_selector
-            .set_minimum_version(1, 3)
-            .set_surface(mainwindow.surface)
+            .set_minimum_version( 1, 3 )
+            .set_surface( mainwindow.surface )
             .set_required_features( gpuFeatures )
             .select()
             .value();
@@ -412,7 +443,6 @@ int main()
         .set_desired_extent(window->size.width, window->size.height)
         .build()
         .value();
-        
 
         *swph = tmpswapchain;
         swapchain->swapchain = tmpswapchain.swapchain;
@@ -891,9 +921,13 @@ int main()
     cyc::Camera Cam;
     Cam.pos = { 0.f, 0.f, -4.f };
 
+    float DeltaTime = 0.f;
     SDL_Event e;
     while ( !cyc::CompareFlags( runtime_status, CYC_STATUS_QUIT ) )
     {
+        cyc::StopWatch frameDelta;
+        cyc::StartStopwatch( &frameDelta );
+
         Keys.pulse = { false };
         Mouse.pulse = { false };
         Mouse.hold[ 3 ] = false; Mouse.hold[ 4 ] = false;
@@ -901,8 +935,6 @@ int main()
         glm::vec2 MovementInputs = { 0.f, 0.f };
         Clearrgba = { .0f, .0f, .0f, 1.f };
 
-        cyc::StopWatch frameDelta;
-        cyc::StartStopwatch( &frameDelta );
         while(SDL_PollEvent( &e ) != 0)
         {
             switch( e.type )
@@ -1117,11 +1149,6 @@ int main()
             {
                 case SDL_WINDOWEVENT_MINIMIZED:
                     //cyc_log( "Window minimized\n" );
-                    while ( cyc::CompareFlags( SDL_GetWindowFlags( mainwindow.sdl_handle ), SDL_WINDOW_MINIMIZED ))
-                    {
-                        SDL_PollEvent( &e );
-                        cyc::WaitMS( 5 );
-                    }
                 break;
                 case SDL_WINDOWEVENT_RESIZED:
                     waitAllFences( frames );
@@ -1168,7 +1195,8 @@ int main()
             lua_getglobal( o->L, "Update" );
             if ( lua_isfunction( o->L, -1 ) )
             {
-                if ( !cyc::CheckLua( o->L, lua_pcall( o->L, 0, 0, 0)) )
+                lua_pushnumber( o->L, DeltaTime );
+                if ( !cyc::CheckLua( o->L, lua_pcall( o->L, 1, 0, 0)) )
                 {
                     #ifdef SCRIPT_VERBOSE
                     cyc_log( "Lua err: Error when calling \'Update\'\n" );
@@ -1176,10 +1204,10 @@ int main()
                 }
             }
         }
-
         if ( cyc::CompareFlags( WindowScriptStats, 1 ) )
         {
             WindowScriptStats &= !1;
+            SDL_SetWindowSize( mainwindow.sdl_handle, mainwindow.size.width, mainwindow.size.height );
             waitAllFences( frames );
             //mainwindow.size.width = e.window.data1;
             //mainwindow.size.height = e.window.data2;
@@ -1191,11 +1219,46 @@ int main()
             (swipychain)(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
             Shaders = LoadShaders();
         }
+        if ( cyc::CompareFlags( WindowScriptStats, 2 << 0 ) )
+        {   
+            WindowScriptStats &= !2 << 0;
+            SDL_MinimizeWindow( mainwindow.sdl_handle );
+        }
+        if ( cyc::CompareFlags( WindowScriptStats, 2 << 1 ) )
+        {
+            WindowScriptStats &= !2 << 1;
+            SDL_MaximizeWindow( mainwindow.sdl_handle );
+            waitAllFences( frames );
+            //mainwindow.size.width = e.window.data1;
+            //mainwindow.size.height = e.window.data2;
+            cyc::RqueueUse( SwapchainDeletionQueue );
+            SwapchainDeletionQueue.clear();
+            cyc::RCqueueUse( &Shaders[ 0 ].Deletion );
+
+
+            (swipychain)(&renderPass, &frameBufs, &swpchain, &mainwindow, &vkbSwapchain);
+            Shaders = LoadShaders();
+        }
+        if ( cyc::CompareFlags( WindowScriptStats, 2 << 2 ) )
+        {   
+            WindowScriptStats &= !2 << 2;
+            SDL_RestoreWindow( mainwindow.sdl_handle );
+        }
         
         //=======================================LOGIC===========================================
         //cyc::CheckStopwatch(frame_delta).result.milliseconds;
         
-        
+        if ( cyc::CompareFlags( SDL_GetWindowFlags( mainwindow.sdl_handle ), SDL_WINDOW_MINIMIZED ) )
+        {
+            Keys.holdCpy = Keys.hold;
+            Mouse.holdCpy = Mouse.hold;
+
+            ++FRAME_NUMBER;
+            cyc::WaitMS( 5 );
+
+            DeltaTime = cyc::CheckStopwatch(frameDelta).result.milliseconds;
+            continue;
+        }
         //=====================================RENDERING=========================================
         #if 1
         //Frame data of the current frame
@@ -1338,7 +1401,7 @@ int main()
         //Lets finally present our image! Show them what a gaping hole we left~ lmao
         VK_CHECK(vkQueuePresentKHR( Queue, &presentInfo ));
 
-        //cyc::CheckStopwatch(frameDelta).result.milliseconds;
+        DeltaTime = cyc::CheckStopwatch(frameDelta).result.milliseconds;
         Keys.holdCpy = Keys.hold;
         Mouse.holdCpy = Mouse.hold;
 
@@ -1347,16 +1410,10 @@ int main()
         cyc::WaitMS(17);
         #endif
     }
-
-    //string hc[] = {"hello", "goodbye"};
-    //string hg[] = {"screw you", "sdfoiajd"};
-    //string hd[4];
-    //memcpy(hd, hc, sizeof(hc));
-    //memcpy(&hd[2], hg, sizeof(hg));
     
     //============================END OF RUNTIME=================================
     
-    cyc_log( "Lunarge is shutting down... code = %lu\n", runtime_status )
+    cyc_log( "Cyclone is shutting down... code = %lu\n", runtime_status )
     cyc_log( "Runtime duration was %0.2f minutes\n", cyc::CheckStopwatch(stopwatch).result.minutes )
 
     waitAllFences( frames );
