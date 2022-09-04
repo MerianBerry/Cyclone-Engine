@@ -74,9 +74,6 @@ void main_( Uint32 *status )
     #endif
 }
 
-/**
- * > The function `cabort()` waits 5 seconds and then calls `abort()`
- */
 void cabort()
 {
     cyc::WaitMS(5000);
@@ -442,7 +439,7 @@ int main()
     VkRenderPass renderPass;
     vector<VkFramebuffer> frameBufs;
 
-    std::function<void(VkRenderPass*, vector<VkFramebuffer>*, cyc::swapchain*, cyc::Window*, vkb::Swapchain*)> swipychain([=](VkRenderPass *rdpass, vector<VkFramebuffer> *fmrbufs, cyc::swapchain *swapchain, cyc::Window *window, vkb::Swapchain* swph){
+    std::function< void(VkRenderPass*, vector<VkFramebuffer>*, cyc::swapchain*, cyc::Window*, vkb::Swapchain*)> swipychain([=](VkRenderPass *rdpass, vector<VkFramebuffer> *fmrbufs, cyc::swapchain *swapchain, cyc::Window *window, vkb::Swapchain* swph){
         vkb::SwapchainBuilder vkswapchain_builder{ physDevice, vkbDevice.device, window->surface };
         
         //ooooooook, here we go. we want it to use the simple SRGB color format, and we want the color space to be nonlinear SRGB
@@ -915,29 +912,7 @@ int main()
         return shaders;
     });
 
-    Shaders = LoadShaders();
-
-    auto reloadMeshes([&]( vector<string> *oldMeshesToLoad, vector<cyc::Mesh> *oldMeshes )
-    {
-        waitAllFences( frames );
-        cyc::RqueueUse( MeshDeletionQueue );
-        MeshDeletionQueue.clear();
-        oldMeshesToLoad->clear();
-        oldMeshes->clear();
-
-        NoWait([=]()
-        {
-            *oldMeshesToLoad = cyc::GetLines( "cfg/meshload.txt" ).result;
-            *oldMeshes = cyc::LoadMeshes( *oldMeshesToLoad ).result;
-            cyc::UploadMeshes( oldMeshes, vmaAllocator, &MeshDeletionQueue );
-        });
-
-        cyc_log( "Meshes size %lu\n", oldMeshes->size() )
-        for( auto o : *oldMeshes )
-        {
-            cyc_log( "triangle size %lu\n", o.vertices.size() / 3 )
-        }
-    });
+    Shaders = LoadShaders( );
     
     SDL_ShowWindow( mainwindow.sdl_handle );
     cyc_log( "Beginning runtime, init sequence took %0.1fms\n\n", cyc::CheckStopwatch(starting_time).result.milliseconds )

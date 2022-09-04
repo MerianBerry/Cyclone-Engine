@@ -1,5 +1,5 @@
 # What is Cyclone?
-Cyclone (Game engine / Graphics Engine) is a heavy in-development light-ish weight engine written in c++, and uses the Vulkan graphics api. *Planned* supported scripting languages are Lua and python. But I am looking into supporting Java and C#.
+Cyclone (Game engine / Graphics Engine) is a heavy in-development light-ish weight engine written in c++, and uses the Vulkan graphics api. *Planned* supported scripting languages are Lua and python. But Java and C# support is being looked into.
 
 
 ### *NOTE: this readme is in progress, as things arent set in stone yet*
@@ -10,6 +10,7 @@ Cyclone (Game engine / Graphics Engine) is a heavy in-development light-ish weig
 
 1. [Structure](#structure)
 2. [Code Examples](#code-examples)
+    1. [Lua](#lua)
 3. [Current focus/progress](#current-focusprogress)
 4. [Libraries, Binaries and API's](#libraries-binaries-and-apis)
 
@@ -33,9 +34,10 @@ Because the engine doesn't have an object handling system, and probably never wi
 
 
 ## Code Examples
-```lua
--- LUA
 
+### Lua
+
+```lua
 function Update()
     print( "I am updating!" )
 end
@@ -47,7 +49,6 @@ end
 This lua script, when used by the engine, will print ``"I am updating!"`` during logic updating, and ``"I am rendering!"`` during the renderpass.
 
 ```lua
--- LUA, NOTE: Cyclone.lua isnt updated to point yet
 cyc = require "Cyclone"
 
 function Update()

@@ -10,7 +10,7 @@ This file will include the entirety of the documentation for the engine because 
     
 
 ## Lua integration/extending
-So, you can look at the engines lua file at [Cyclone.lua](../Cyclone.lua).
+You can look at the engines lua file at [Cyclone.lua](../Cyclone.lua).
 
 
 ### Runtime manipulation
@@ -21,7 +21,8 @@ Exit( code -> int, message -> string ) -> nothing
 
 ``message`` is just a string input that you want to print along with the exit message. **NOTE:** message input *CAN* be left empty.
 
-##
+<br/><br/>
+
 ### Window Inputs
 ```lua
 GetKeyState( key -> string, mode -> string ) -> bool
@@ -32,7 +33,7 @@ GetKeyState( key -> string, mode -> string ) -> bool
 
 This returns true if the `key` requested was pressed during the *last frame*.
 
-##
+###
 ```lua
 GetButtonState( btn -> string, mode -> string ) -> bool
 ```
@@ -42,7 +43,8 @@ GetButtonState( btn -> string, mode -> string ) -> bool
 
 This returns true if the `btn` requested was pressed during the *last frame*.
 
-##
+<br/><br/>
+
 ### Window manipulation
 ```lua
 SetWindowSize( w -> number, h -> number ) -> nothing
@@ -51,7 +53,8 @@ SetWindowSize( w -> number, h -> number ) -> nothing
 
 ``h`` acts the same as w, but it sets the desired height for the window to be set to. The minimum window height is 560px. It's also converted to an integer in the engine.
 
-##
+###
+
 ```lua
 SetWindowPos( x -> number, y -> number ) -> nothing
 ```
@@ -59,7 +62,8 @@ SetWindowPos( x -> number, y -> number ) -> nothing
 
 ``y``, acting similar to x, is the desired y position. Also converted to an integer in the engine.
 
-##
+###
+
 ```lua
 SetWindowState( mode -> string ) -> nothing
 ```
