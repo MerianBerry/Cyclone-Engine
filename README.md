@@ -4,7 +4,7 @@ Cyclone (Game engine / Graphics Engine) is a heavy in-development light-ish weig
 
 ### *NOTE: this readme is in progress, as things arent set in stone yet*
 
-[Heres](docs/documentation.md) the documentation (not in a good state, by that I mean it has nothing in it)
+[Heres](docs/documentation.md) the documentation
 
 ### *Contents*
 
