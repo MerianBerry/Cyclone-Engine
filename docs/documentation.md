@@ -7,6 +7,8 @@ This file will include the entirety of the documentation for the engine because 
     1. [Runtime manipulation](#runtime-manipulation)
     2. [Window inputs](#window-inputs)
     3. [Window manipulation](#window-manipulation)
+    4. [Scene management (upcoming)](#scene-management)
+    5. [Mesh handling/accessing (upcoming)](#mesh-handlingaccessing)
     
 
 ## Lua integration/extending
@@ -75,3 +77,63 @@ These are the accepted modes:
 - `"restore"`. Restores the window from a minimized state to the previous size.
 
 If the mode isn't valid, nothing will happen.
+
+<br/><br/>
+
+### Scene management
+
+```lua
+Scene.SetColor( self, r2 -> number, g2 -> number, b2 -> number, a2 -> number ) -> nothing
+```
+This is a method of the Scene table. Know that giving the `self` input or using `Scene:` will be required.
+
+`r2, g2, b2, a2` are all very similar, as they are number inputs (typical range is 0 - 255 ). They are different in what they represent. They represent the new color of red, green, blue, alpha (respective) to set to the local `Scene` draw color.
+This method automatically alpha blends the new color with the old color. **NOTE:** The defualt color of the Scene table is `r = 0, g = 0, b = 0, a = 255`.
+
+###
+
+```lua
+Scene.DrawMesh( self, name -> string ) -> nothing
+```
+This is a method of the Scene table. Know that giving the `self` input or using `Scene:` will be required.
+
+`name` is a string input of the name of the mesh that you want to draw. **NOTE:** You *MUST* use `LoadMesh` with the desired name *BEFORE* using `Scene.DrawMesh`.
+
+###
+
+```lua
+Scene.DrawClear( self ) -> nothing
+```
+This is a method of the Scene table. Know that giving the `self` input or using `Scene:` will be required.
+
+This method takes no inputs, though it uses Scenes `r, g, b` local values to draw to the scene. When called, it will set the background color of the screen to the current color of the `Scene` local color values. As it is setting the background to this color. It does not draw over other drawn items except other `Scene.DrawClear`s.
+
+<br/><br/>
+
+### Mesh handling/accessing
+
+```lua
+LoadMesh( path -> string, name -> string ) -> string
+```
+**HUGE NOTE:** This method uses a No Wait method of loading. So the mesh might not be immediately accessable right after the mothod call.
+
+`path` is a string input representing the path to the mesh you want to load. Know that the path root is the directory that the Excecutable is in. **NOTE:** The only *currently* supported file format is *.obj.
+
+`name` is a string input representing the name you want to give the mesh. This name will be used for handing/accessing the mesh inside the engine structure, so *ONLY **ONE*** mesh with that name can exist.
+
+`return value` is the name of the mesh so you can store it into a variable. It is the same as the `name` input.
+
+###
+
+```lua
+SetMeshState( name -> string, mode -> string ) -> nothing
+```
+`name` is a string input representing the name of the mesh that you want to modify.
+
+`mode` is a string input representing the desired mode that you want the mesh to be in. Accepted inputs are listed:
+- `"hide"`. Makes the mesh invisible.
+- `"show"`. Makes the mesh visible. On by default.
+- `"wire"`. Renders the mesh in wireframe mode.
+- `"fill"`. Renders the mesh in fill mode. On my default.
+
+If the `mode` input isnt one of these listed modes, it will do nothing.
