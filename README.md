@@ -66,6 +66,8 @@ When used by the engine, this script will print ``"You killed jim!"`` when the l
 ## Current focus/progress
 Lua scripting is currently being created, there are still a LOT of functions to be extended into lua. Once that is done, python scripting will be pretty close up to being investigated.
 
+As of the moment, the engine doesnt have enough functionality/structure to expand the language support. Lua is essentially the test subject for scripting. Along side that, the engines functionality is being expanded. Mesh loading and drawing is the current focus.
+
 
 ## Libraries, Binaries and API's
 ![Vulkan](docs/Vulkan_100px_Dec16.png)
