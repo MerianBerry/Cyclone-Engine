@@ -2,8 +2,8 @@
 #include "Cyclone-inits.h"
 
 //#define SHADER_VERBOSE
-//#define NOWAIT_VERBOSE
-//#define SCRIPT_VERBOSE
+#define NOWAIT_VERBOSE
+#define SCRIPT_VERBOSE
 #define VULKAN_DEBUG
 #undef pi
 
@@ -18,7 +18,6 @@
 		}                                          \
 	} while (0)
 
-
 #ifdef VULKAN_DEBUG
 constexpr bool enableValidation = true;
 #else
@@ -27,7 +26,6 @@ constexpr bool enableValidation = false;
 
 cyc::Lambda_vec< void > MasterDeletionQueue;
 cyc::Lambda_vec< void > SwapchainDeletionQueue;
-cyc::Lambda_vec< void > MeshDeletionQueue;
 
 using cyc::Lambda; using std::pair;
 
@@ -35,18 +33,22 @@ constexpr Uint32 FRAME_WAIT = std::numeric_limits< Uint32 >::max();
 constexpr Uint32 WinWMin = 960;
 constexpr Uint32 WinHMin = 540;
 
-vector< Lambda< void >> _NOWAITLIST;
+vector< Lambda< void > > _NOWAITLIST;
 #define NoWait _NOWAITLIST.push_back
 
 Uint32 runtime_status = CYC_STATUS_IDLE;
 
-std::unordered_map< string, cyc::Mesh > Meshes;
+std::unordered_map< string, cyc::Dmesh > Meshes;
 vector< string > MeshKeys;
 
 cyc::Mouse Mouse;
 cyc::Keyboard Keys;
 
 glm::vec4 Clearrgba = { .0f, .0f, .0f, 1.f };
+
+//look at this man
+//This is the main() local gpu mem allocator. this is used to allocate memory on the gpu, and cpu
+VmaAllocator vmaAllocator;
 
 
 /**
@@ -64,6 +66,9 @@ void main_( Uint32 *status )
     {
         for( auto o : _NOWAITLIST )
         {
+            #ifdef NOWAIT_VERBOSE
+            cyc_log( "No wait item is being excecuted\n" );
+            #endif
             o();
         }
         _NOWAITLIST.clear();
@@ -86,15 +91,42 @@ int __cdecl lua_LoadMesh( lua_State *L )
     string path = lua_tostring( L, 1 );
     string name = lua_tostring( L, 2 );
 
+    #ifdef SCRIPT_VERBOSE
+    cyc_log( "[C++] LoadMesh( \"%s\", \"%s\" ) called, file exists: %i\n", path.c_str(), name.c_str(), cyc::DoesFileExist( path ) );
+    #endif
+
     if ( !cyc::UnorderedExists( &Meshes, name ) )
     {
-        Meshes[ name ] = cyc::LoadMeshes( { path } ).result[ 0 ];
-        MeshKeys.push_back( name );
+        Meshes[ name ] = {};
+        auto o = &(*Meshes.find( name )).second;
+        Meshes[ name ].x.name = name;
+
+        NoWait( [=]()
+        -> void
+        {
+            cyc::LoadMesh( &o->x, path );
+            MeshKeys.push_back( name );
+
+            cyc_log( "Mesh has a vertice count of %lu.\n", o->x.vertices.size() );
+            #ifdef SCRIPT_VERBOSE
+            cyc_log( "Loaded mesh \"%s\", preparing to upload...\n", name.c_str() );
+            #endif
+            
+            cyc::UploadMesh( o, vmaAllocator );
+
+            #ifdef SCRIPT_VERBOSE
+            cyc_log( "Uploaded mesh \"%s\". Is rendering %i\n", name.c_str(), o->x.render );
+            #endif
+        });
+        #ifdef SCRIPT_VERBOSE
         // cyc_log( "New mesh \'%s\' appended with path \'%s\'\n", name.c_str(), path.c_str() );
+        #endif
     }
     else
     {
-        // cyc_log( "Mesh \'%s\' already exists, no new mesh loaded\n", name.c_str() );
+        #ifdef SCRIPT_VERBOSE
+        cyc_log( "Mesh \'%s\' already exists, no new mesh loaded\n", name.c_str() );
+        #endif
     }
     lua_pushstring( L, name.c_str() );
     return 1;
@@ -280,11 +312,9 @@ int main()
     auto sys_start_time = std::chrono::system_clock::to_time_t( std::chrono::system_clock::now() );
     cyc_log( "Lunarge initiated at %s\n", std::ctime( &sys_start_time ) )
 
-    std::thread _nowaitthread( main_, &runtime_status );
-    _nowaitthread.detach();
-
     cyc::StopWatch stopwatch;
     cyc::StartStopwatch(&stopwatch);
+
 
     //Initilise SDL with every subsystem
     if ( SDL_Init(SDL_INIT_EVERYTHING) != 0 )
@@ -299,6 +329,7 @@ int main()
     vkb::InstanceBuilder inst_builder;
     vkb::Device vkbDevice;
     vkb::PhysicalDevice physDevice;
+    vector< VkSubmitInfo > GQueueSubmits;
 
     vkb::Instance vkbInstance = inst_builder
     .set_app_name( "Cyclone GUI" )
@@ -309,7 +340,7 @@ int main()
         [] ( VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 	    VkDebugUtilsMessageTypeFlagsEXT messageType,
 	    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-	    void *pUserData ) 
+	    void *pUserData )
         -> VkBool32
         {
             auto severity = vkb::to_string_message_severity( messageSeverity );
@@ -318,8 +349,8 @@ int main()
                 cyc_log( "SEVERITY[ %s ] TYPE[ %s ]: \n%s\n\n", severity, type, pCallbackData->pMessage );
             return VK_FALSE;
         }
-     ).build().value();
-
+    ).build().value();
+    
     //Pushback the vkb::destroy_instance function, this will be called very last in the deltion queue
     MasterDeletionQueue.push_back(
     [=]()
@@ -330,17 +361,18 @@ int main()
     cyc_log("Vulkan instance initiated in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds)
     cyc::ResetStopwatch( &stopwatch );
 
+    //=================================================CONFIG LOADING=======================================================
     //Config loading! This mostly/entirely effects the window. theres also some checks for if it exists, or if it doent have anything in it
-    if( !cyc::DoesFileExist( "cfg/config.txt" ) )
+    if( !cyc::DoesFileExist( "config.txt" ) )
     {
-        cyc::WriteFile( "cfg/config.txt", "" );
+        cyc::WriteFile( "config.txt", "" );
     }
-    vector<string> config = cyc::GetLines("cfg/config.txt").result;
+    vector<string> config = cyc::GetLines("config.txt").result;
     {
         if( config.size() == 0 )
         {
-            cyc::WriteFile( "cfg/config.txt", string_format( "%i\n%i\n%i\n%i\nCyclone\n%i", WinWMin, WinHMin, 0, 0, 0 ) );
-            config = cyc::GetLines("cfg/config.txt").result;
+            cyc::WriteFile( "config.txt", string_format( "%i\n%i\n%i\n%i\nCyclone\n%i", WinWMin, WinHMin, 0, 0, 0 ) );
+            config = cyc::GetLines("config.txt").result;
         }
         mainwindow.size.width = stoi(config[0]);
         mainwindow.size.height = stoi(config[1]);
@@ -420,10 +452,7 @@ int main()
     cyc_log("Device has been selected in %0.1fms\n", cyc::CheckStopwatch(stopwatch).result.milliseconds);
     cyc::ResetStopwatch(&stopwatch);
 
-    //look at this man
-    //This is the main() local gpu mem allocator. this is used to allocate memory on the gpu, and cpu
     //We need to give it a decent assortment of data, but we also want to tell it to use vulkan 1.3 ( important )
-    VmaAllocator vmaAllocator;
     {
         VmaAllocatorCreateInfo info = {};
         info.physicalDevice = physDevice.physical_device;
@@ -435,11 +464,12 @@ int main()
     
     //=============================MF SWAPCHAIN==================================
     vkb::Swapchain vkbSwapchain;
-    cyc::swapchain swpchain;
+    cyc::T_Swapchain swpchain;
+    
     VkRenderPass renderPass;
     vector<VkFramebuffer> frameBufs;
 
-    std::function< void(VkRenderPass*, vector<VkFramebuffer>*, cyc::swapchain*, cyc::Window*, vkb::Swapchain*)> swipychain([=](VkRenderPass *rdpass, vector<VkFramebuffer> *fmrbufs, cyc::swapchain *swapchain, cyc::Window *window, vkb::Swapchain* swph){
+    std::function< void(VkRenderPass*, vector<VkFramebuffer>*, cyc::T_Swapchain*, cyc::Window*, vkb::Swapchain*)> swipychain([=](VkRenderPass *rdpass, vector<VkFramebuffer> *fmrbufs, cyc::T_Swapchain *swapchain, cyc::Window *window, vkb::Swapchain* swph){
         vkb::SwapchainBuilder vkswapchain_builder{ physDevice, vkbDevice.device, window->surface };
         
         //ooooooook, here we go. we want it to use the simple SRGB color format, and we want the color space to be nonlinear SRGB
@@ -610,12 +640,6 @@ int main()
     VkCommandBuffer uploadCommandBuffer = { };
     VkCommandPool uploadCommandPool = { };
 
-    //==============================================SCRIPT LOADING======================================================
-    //================================LUA==============================
-    
-    Lua_Scripts = InitLua( );
-
-
     //==========================================SYNC OBJECTS CREATION===================================================
     {
         VkSemaphoreCreateInfo renderSemaphoreInfo = vkinit::semaphore_create_info();
@@ -645,23 +669,23 @@ int main()
         }
     }
 
-    ImmediateSubmit = Lambda< void, Lambda< void, VkCommandBuffer >>([&](Lambda< void, VkCommandBuffer > _func)
+    ImmediateSubmit = [&]( Lambda< void, VkCommandBuffer > _func )
+    -> void
     {
         VkCommandBuffer cmd = uploadCommandBuffer;
-        
 
         //begin the command buffer recording. We will use this command buffer exactly once before resetting, so we tell vulkan that
-	VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+	    VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info( VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT );
 
-        VK_CHECK(vkBeginCommandBuffer( cmd, &cmdBeginInfo ));
+        VK_CHECK( vkBeginCommandBuffer( cmd, &cmdBeginInfo ) );
 
         //hit up the lambda and give it our juicy command buffer
         _func( cmd );
         
-        VK_CHECK(vkEndCommandBuffer( cmd ));
+        VK_CHECK( vkEndCommandBuffer( cmd ) );
 
         //force the commands into submition i mean submit the commands
-        VkSubmitInfo submit = vkinit::submit_info(&cmd);
+        VkSubmitInfo submit = vkinit::submit_info( &cmd );
         
         //submit command buffer to the queue and execute it.
         // uploadFence will now block until the graphic commands finish execution
@@ -673,7 +697,7 @@ int main()
 
         // reset the command buffers inside the command pool
         vkResetCommandPool( vkbDevice.device, uploadCommandPool, 0 );
-    });
+    };
 
     MasterDeletionQueue.push_back([=]()
     {
@@ -694,6 +718,170 @@ int main()
         vkb::destroy_device( vkbDevice );
     });
 
+    //================================================IMGUI???===========================================================
+    #define RGB( r, g, b ) r / 255.f, g / 255.f, b / 255.f
+    #define RGBA( r, g, b, a ) r / 255.f, g / 255.f, b / 255.f, a / 255.f
+
+    auto WinBGCol = ImVec4{ 15 / 255.f, 15 / 255.f, 15 / 255.f, 1.f };
+    auto ExDarkGray = ImVec4{ 24 / 255.f, 24 / 255.f, 24 / 255.f, 1.f };
+    auto DarkGray = ImVec4{ 37 / 255.f, 37 / 255.f, 37 / 255.f, 1.f };
+    auto DMedGray = ImVec4{ 44 / 255.f, 44 / 255.f, 44 / 255.f, 1.f };
+    auto MedGray = ImVec4{ 57 / 255.f, 57 / 255.f, 57 / 255.f, 1.f };
+    auto LMedGray = ImVec4{ 75 / 255.f, 75 / 255.f, 75 / 255.f, 1.f };
+    auto Gray = ImVec4{ 119 / 255.f, 119 / 255.f, 119 / 255.f, 1.f };
+
+    auto DarkBabyGray = ImVec4{ 37 / 255.f, 77 / 255.f, 99 / 255.f, 1.f };
+    auto MedBabyGray = ImVec4{ 57 / 255.f, 122 / 255.f, 157 / 255.f, 1.f };
+    auto LMedBabyGray = ImVec4{ 75 / 255.f, 91 / 255.f, 99 / 255.f, 1.f };
+    auto BabyGray = ImVec4{ 119 / 255.f, 149 / 255.f, 165 / 255.f, 1.f };
+    auto LBabyGray = ImVec4{ RGB( 136, 162, 176 ), 1.f };
+    
+    auto DarkishGreen = ImVec4{ RGBA( 75, 200, 72, 151 ) };
+    auto MedGreen = ImVec4{ RGBA( 28, 206, 22, 190 ) };
+    auto Green = ImVec4{ RGBA( 32, 255, 25, 200 ) };
+
+    auto MedPurple = ImVec4{ RGB( 128, 86, 143 ), 1.f };
+    auto Purple = ImVec4{ RGB( 141, 82, 162 ), 1.f };
+    auto HPurple = ImVec4{ RGB( 183, 83, 218 ), 1.f };
+
+    #define BeginGreenButton ImGui::PushStyleColor( ImGuiCol_Button, DarkishGreen );    \
+                             ImGui::PushStyleColor( ImGuiCol_ButtonHovered, MedGreen ); \
+                             ImGui::PushStyleColor( ImGuiCol_ButtonActive, Green )
+
+    auto LoadImGui = [=]()
+    -> void
+    {
+        //1: create descriptor pool for IMGUI
+        // the size of the pool is very oversize, but it's copied from imgui demo itself.
+        VkDescriptorPoolSize pool_sizes[] =
+        {
+            { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+            { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+        };
+
+        VkDescriptorPoolCreateInfo pool_info = {};
+        pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pool_info.maxSets = 1000;
+        pool_info.poolSizeCount = std::size(pool_sizes);
+        pool_info.pPoolSizes = pool_sizes;
+
+        VkDescriptorPool imguiPool;
+        VK_CHECK(vkCreateDescriptorPool( vkbDevice.device, &pool_info, nullptr, &imguiPool ) );
+
+
+        // 2: initialize imgui library
+
+        //this initializes the core structures of imgui and implot
+        ImGui::CreateContext();
+        ImPlot::CreateContext();
+
+        ImGuiIO& io = ImGui::GetIO(); (void)io;
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;       // Enable Keyboard Controls
+        //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
+
+        io.Fonts->AddFontFromFileTTF("fonts/consola.ttf", 15.0f);
+        // io.Fonts->AddFontFromFileTTF( "fonts/segoeui.ttf", 18.0f );
+        
+        //io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;         // Enable Multi-Viewport / Platform Windows
+
+        // Setup Dear ImGui style
+        ImGui::StyleColorsDark();
+
+        // When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
+        ImGuiStyle& style = ImGui::GetStyle();
+        {
+            style.Colors[ ImGuiCol_Header ] = WinBGCol;
+            style.Colors[ ImGuiCol_HeaderHovered ] = ExDarkGray;
+            style.Colors[ ImGuiCol_HeaderActive ]  = DarkGray;
+
+            style.Colors[ ImGuiCol_FrameBg ] = DarkGray;
+            style.Colors[ ImGuiCol_FrameBgHovered ] = MedGray;
+            style.Colors[ ImGuiCol_FrameBgActive ] = LMedGray;
+
+            style.Colors[ ImGuiCol_TitleBg ] = ExDarkGray;
+            style.Colors[ ImGuiCol_TitleBgActive ] = ExDarkGray;
+            style.Colors[ ImGuiCol_TitleBgCollapsed ] = ExDarkGray;
+
+            style.Colors[ ImGuiCol_CheckMark ] = Purple;
+
+            style.Colors[ ImGuiCol_SliderGrab ] = Gray;
+            style.Colors[ ImGuiCol_SliderGrabActive ] = HPurple;
+
+            style.Colors[ ImGuiCol_Tab ] = DarkGray;
+            style.Colors[ ImGuiCol_TabUnfocused ] = DarkGray;
+            style.Colors[ ImGuiCol_TabHovered ] = MedGray;
+            style.Colors[ ImGuiCol_TabActive ] = MedGray;
+            style.Colors[ ImGuiCol_TabUnfocusedActive ] = MedGray;
+
+            style.Colors[ ImGuiCol_PlotHistogram ] = Purple;
+            style.Colors[ ImGuiCol_PlotHistogramHovered ] = HPurple;
+
+            style.Colors[ ImGuiCol_Button ] = MedGray;
+            style.Colors[ ImGuiCol_ButtonHovered ] = LMedGray;
+            style.Colors[ ImGuiCol_ButtonActive ] = MedPurple;
+
+            style.TabRounding = 3.f;
+            style.TabBorderSize = 0.f;
+
+            style.FramePadding = ImVec2{ 14, 2 };
+            style.FrameRounding = 3.f;
+
+            style.GrabRounding = 2.f;
+        }
+        
+        //style.WindowBorderSize = 0.0f;
+        if ( io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable )
+        {
+            style.WindowRounding = 0.0f;
+        }
+
+        //this initializes imgui for SDL
+        ImGui_ImplSDL2_InitForVulkan( mainwindow.sdl_handle );
+
+        //this initializes imgui for Vulkan
+        ImGui_ImplVulkan_InitInfo init_info = {};
+        init_info.Instance = vkbInstance.instance;
+        init_info.PhysicalDevice = physDevice.physical_device;
+        init_info.Device = vkbDevice.device;
+        init_info.Queue = vkbDevice.get_queue( (vkb::QueueType)CYC_QUEUETYPE_GRAPHICS ).value();
+        init_info.DescriptorPool = imguiPool;
+        init_info.MinImageCount = 3;
+        init_info.ImageCount = 3;
+        init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+        ImGui_ImplVulkan_Init(&init_info, renderPass);
+
+        //execute a gpu command to upload imgui font textures
+        ImmediateSubmit( [&](VkCommandBuffer cmd )
+        {
+            ImGui_ImplVulkan_CreateFontsTexture(cmd);
+        });
+
+        //clear font textures from cpu data
+        
+        ImGui_ImplVulkan_DestroyFontUploadObjects();
+
+        //add the destroy the imgui created structures
+        MasterDeletionQueue.push_back([=]() {
+
+            vkDestroyDescriptorPool( vkbDevice.device, imguiPool, nullptr );
+            ImGui_ImplVulkan_Shutdown();
+        });
+    };
+
+    LoadImGui();
     //Its about time to load those sexy shaders
     vector< cyc::Shader > Shaders;
 
@@ -702,7 +890,7 @@ int main()
         cyc::StopWatch exec;
         cyc::StartStopwatch( &exec );
         vector< cyc::Shader > shaders;
-        auto lines = cyc::GetLines( "cfg/shaderload.txt" ).result;
+        auto lines = cyc::GetLines( "shaderload.txt" ).result;
         #ifdef SHADER_VERBOSE
         cyc_log( "Shader load file has been loaded, it has a line count of %i\n", int( lines.size() ) )
         #endif
@@ -913,9 +1101,18 @@ int main()
     });
 
     Shaders = LoadShaders( );
+
+    std::thread _nowaitthread( main_, &runtime_status );
+    _nowaitthread.detach();
     
-    SDL_ShowWindow( mainwindow.sdl_handle );
     cyc_log( "Beginning runtime, init sequence took %0.1fms\n\n", cyc::CheckStopwatch(starting_time).result.milliseconds )
+
+    //==============================================SCRIPT LOADING======================================================
+    //---------------------------------------------------LUA------------------------------------------------------------
+
+    Lua_Scripts = InitLua( );
+
+    SDL_ShowWindow( mainwindow.sdl_handle );
 
     //================================RUNTIME====================================
 
@@ -923,6 +1120,17 @@ int main()
     Cam.pos = { 0.f, 0.f, -4.f };
 
     float DeltaTime = 0.f;
+    vector< float > DeltaTimeVec( 600 );
+    for ( size_t i = 0; i < DeltaTimeVec.size(); ++i )
+    {
+        DeltaTimeVec[ i ] = 0.f;
+    }
+    vector< float > FPSVec( 600 );
+    for ( size_t i = 0; i < FPSVec.size(); ++i )
+    {
+        FPSVec[ i ] = 0.f;
+    }
+
     SDL_Event e;
     while ( !cyc::CompareFlags( runtime_status, CYC_STATUS_QUIT ) )
     {
@@ -938,6 +1146,7 @@ int main()
 
         while(SDL_PollEvent( &e ) != 0)
         {
+            ImGui_ImplSDL2_ProcessEvent( &e );
             switch( e.type )
             {
                 case SDL_KEYDOWN:
@@ -1189,6 +1398,7 @@ int main()
             Lua_Scripts = InitLua( );
         }
         //===================================LUA SCRIPT UPDATING==============================
+
         for ( auto u : Lua_Scripts )
         {
             auto o = &u;
@@ -1248,12 +1458,116 @@ int main()
         
         //=======================================LOGIC===========================================
         //cyc::CheckStopwatch(frame_delta).result.milliseconds;
+
+        if ( ( SDL_GetWindowFlags( mainwindow.sdl_handle ) & SDL_WINDOW_MINIMIZED ) == SDL_WINDOW_MINIMIZED )
+        {
+            DeltaTime = cyc::CheckStopwatch(frameDelta).result.milliseconds;
+            Keys.holdCpy = Keys.hold;
+            Mouse.holdCpy = Mouse.hold;
+
+            ++FRAME_NUMBER;
+            continue;
+        }
+
+        DeltaTimeVec.insert( DeltaTimeVec.begin(), DeltaTime );
+        DeltaTimeVec.erase( DeltaTimeVec.begin() + ( DeltaTimeVec.size() - 1 ) );
+
+        FPSVec.insert( FPSVec.begin(), 1000.f / DeltaTime );
+        FPSVec.erase( FPSVec.begin() + ( FPSVec.size() - 1 ) );
         
         
         //=====================================RENDERING=========================================
-        #if 1
-        //Frame data of the current frame
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplSDL2_NewFrame( mainwindow.sdl_handle );
 
+        ImGui::NewFrame();
+        ImGui::ShowDemoWindow();
+
+        //=====================================IMGUI LOGIC=======================================
+        {
+            ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoDecoration;
+            ImGui::SetNextWindowSizeConstraints( ImVec2( 100, 400 ), ImVec2( 800, 4000 ) );
+
+            ImGui::Begin( "Content", NULL, window_flags );
+
+            ImGuiStyle& style = ImGui::GetStyle();
+
+            {
+                auto TreeNodeFlags = ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_AllowItemOverlap;
+                auto t_open = ImGui::TreeNodeEx( "Your Mother", TreeNodeFlags );
+
+                auto contentRegionAvail = ImGui::GetContentRegionAvail();
+                ImGui::SameLine( ImGui::GetWindowWidth() - 41.f, 0.f );
+                if ( ImGui::Button( "*" ) )
+                    cyc_log( "HELP ME\n" );
+
+                if ( t_open )
+                {
+                    char Hbuf[ 512 ];
+
+                    ImGui::Indent();
+                    ImGui::InputTextWithHint( "Name", "Filter or smth", Hbuf, sizeof( Hbuf ), ImGuiInputTextFlags_AllowTabInput );
+
+                    /*vector< float > x;
+                    for ( size_t i = 0; i < DeltaTimeVec.size(); ++i )
+                    {
+                        x.push_back( (float)i * 2 );
+                    }
+
+                    ImPlot::SetNextAxesLimits( 0, DeltaTimeVec.size(), 0, 255 );
+                    ImPlotFlags plotFlags = ImPlotFlags_NoInputs;
+                    if ( ImPlot::BeginPlot( "Frame times/FPS", "Frames", "", ImVec2( 0, 0 ), plotFlags, ImPlotAxisFlags_NoTickLabels ) )
+                    {
+                        ImPlot::PlotLine( "Delta Time", x.data(), DeltaTimeVec.data(), DeltaTimeVec.size() );
+                        ImPlot::PlotLine( "FPS", x.data(), FPSVec.data(), FPSVec.size() );
+
+                        ImPlot::EndPlot();
+                    }*/
+                    
+                    ImGui::Unindent();
+                }
+            }
+            ImGui::Spacing();
+            
+            BeginGreenButton;
+
+            if ( ImGui::Button( "Push me" ) )
+            {
+                cyc_log( "He pushed me!\n" );
+            }
+            ImGui::SameLine( );
+            if ( ImGui::Button( "Exit" ) )
+            {
+                runtime_status |= CYC_STATUS_QUIT;
+            }
+
+            ImGui::PopStyleColor( 3 );
+
+            ImGui::End();
+        }
+        {
+            ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground; //| ImGuiWindowFlags_NoDecoration;
+            //ImGui::SetNextWindowSizeConstraints( ImVec2( 100, 400 ), ImVec2( 800, 4000 ) );
+
+            ImGui::SetNextWindowBgAlpha( 0.f );
+
+            ImGui::Begin( "Viewport", NULL, window_flags );
+            
+            BeginGreenButton;
+
+            if ( ImGui::Button( "Kill me" ) )
+                runtime_status |= CYC_STATUS_QUIT;
+
+            ImGui::PopStyleColor( 3 );
+
+            ImGui::End();
+
+        }
+        
+        
+
+        ImGui::Render();
+        //Frame data of the current frame
         auto curFrame = &frames[ GET_FRAME() ];
         //Wait for the fences so we stay synced with the GPU, then reset the fence so it can be used again
         VK_CHECK(vkWaitForFences( vkbDevice.device, 1, &curFrame->render_fence, true, FRAME_WAIT ));
@@ -1273,6 +1587,7 @@ int main()
         auto cmdBeginInfo = vkinit::command_buffer_begin_info( VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT );
         VK_CHECK( vkBeginCommandBuffer( cmd, &cmdBeginInfo ) );
 
+        //Call the Render functions in the lua scripts
         for ( auto u : Lua_Scripts )
         {
             auto o = &u;
@@ -1301,59 +1616,65 @@ int main()
 
         //Now that weve given the renderpass to the cmd buffer we can now begin giving commands!
         //=====================================RENDERPASS STARTS HERE IDIOT========================================
-        auto ColorFillPipe = Shaders[ 0 ].Pipeline;
-        auto ColorFillPipeLayout = Shaders[ 0 ].PipelineLayout;
+        auto ThirdFillPipe = Shaders[ 0 ].Pipeline;
+        auto ThirdFillPipeLayout = Shaders[ 0 ].PipelineLayout;
 
         //lets see if it works (it probably wont lmao)
         //first we bind the pipeline to the command buffer, of course its a graphics type, so lets specify
-        vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ColorFillPipe );
+        vkCmdBindPipeline( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, ThirdFillPipe );
         
-        //make a model view matrix for rendering the object
         using glm::radians; using glm::vec3;
-
-        /* Cam.pos += glm::vec3( MovementInputs.x * -sin(radians(Cam.rotation.x)) * cos(radians(Cam.rotation.y)) + MovementInputs.y * -cos(radians(Cam.rotation.x)),
+        /*
+        Cam.pos += glm::vec3( MovementInputs.x * -sin(radians(Cam.rotation.x)) * cos(radians(Cam.rotation.y)) + MovementInputs.y * -cos(radians(Cam.rotation.x)),
             MovementInputs.x * -sin(radians(Cam.rotation.y)),
             MovementInputs.x * cos(radians(Cam.rotation.x)) * cos(radians(Cam.rotation.y)) + MovementInputs.y * -sin(radians(Cam.rotation.x)) );
 
         glm::mat4 view = glm::lookAt( Cam.pos, Cam.pos + glm::vec3(-sin(radians(Cam.rotation.x)) * cos(radians(Cam.rotation.y)),
             -sin(radians(Cam.rotation.y)),
             cos(radians(Cam.rotation.x) ) * cos(radians(Cam.rotation.y) )),
-            glm::vec3(-sin(radians(Cam.rotation.x)) * sin(radians(Cam.rotation.y)),
-                cos(radians(Cam.rotation.y)),
-                cos(radians(Cam.rotation.x)) * sin(radians(Cam.rotation.y)) ));
+        glm::vec3(-sin(radians(Cam.rotation.x)) * sin(radians(Cam.rotation.y)),
+            cos(radians(Cam.rotation.y)),
+            cos(radians(Cam.rotation.x)) * sin(radians(Cam.rotation.y)) ));
+        */
 
         //camera projection
         glm::mat4 projection = glm::perspective(radians(Cam.FOV), (float)mainwindow.size.width / (float)mainwindow.size.height, Cam.cuttof.x, Cam.cuttof.y);
         projection[1][1] *= -1;
 
-        for( int i = 0; i < Meshes.size(); ++i )
+        for( size_t i = 0; i < MeshKeys.size(); ++i )
         {
-            VkBuffer buf = Meshes[ i ]._vertexBuffer._buffer;
+            auto o = cyc::UnorderedGet( &Meshes, MeshKeys[ i ] );
+            auto u = o.x;
+            
+            if ( !o.x.render )
+                continue;
+            VkBuffer buf = u._vertexBuffer._buffer;
             VkDeviceSize offset = 0;
-            //time to bind this massive dong i mean triangle why am i so horny
+            //time to bind this massive dong i mean triangle
             vkCmdBindVertexBuffers( cmd, 0, 1, &buf, &offset );
             float pi = 3.141592654f;
 
             //model translation
-            glm::mat4 model = glm::translate( glm::mat4( 1.f ), -meshes[ i ].position );
+            glm::mat4 model = glm::translate( glm::mat4( 1.f ), -u.position );
 
-            model = glm::rotate( model, meshes[ i ].rotation.x*pi/2, vec3( 1.f, 0.f, 0.f ));
-            model = glm::rotate( model, meshes[ i ].rotation.y*pi/2, vec3( 0.f, 1.f, 0.f ));
-            model = glm::rotate( model, meshes[ i ].rotation.z*pi/2, vec3( 0.f, 0.f, 1.f ));
+            model = glm::rotate( model, u.rotation.x*pi/2, vec3( 1.f, 0.f, 0.f ) );
+            model = glm::rotate( model, u.rotation.y*pi/2, vec3( 0.f, 1.f, 0.f ) );
+            model = glm::rotate( model, u.rotation.z*pi/2, vec3( 0.f, 0.f, 1.f ) );
             //model scale
-            model = glm::scale( model, meshes[ i ].scale );
+            model = glm::scale( model, u.scale );
             
             //calculate final mesh matrix
-            glm::mat4 mesh_matrix = projection * view * model;
+            glm::mat4 mesh_matrix = projection * glm::mat4( 1.f ) * model;
 
             cyc::MeshPushConstant constants;
             constants.renderMatrix = mesh_matrix;
 
-            vkCmdPushConstants( cmd, ColorFillPipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof( cyc::MeshPushConstant ), &constants );
+            vkCmdPushConstants( cmd, ThirdFillPipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof( cyc::MeshPushConstant ), &constants );
 
-            vkCmdDraw( cmd, meshes[ i ].vertices.size(), 1, 0, i );
+            vkCmdDraw( cmd, u.vertices.size(), 1, 0, i );
         }
-        */
+        
+        ImGui_ImplVulkan_RenderDrawData( ImGui::GetDrawData(), cmd );
         //======================================RENDERPASS ENDS HERE IDIOT=========================================
         vkCmdEndRenderPass( cmd );
 
@@ -1370,11 +1691,13 @@ int main()
 
         VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         submitInfo.pWaitDstStageMask = &waitStage;
+        GQueueSubmits.push_back( submitInfo );
 
         //We now have our submit info, so lets submit our command buffer to the queue and execute it, it will then block the render semaphore, sexy
-        VkQueue Queue = vkbDevice.get_queue((vkb::QueueType)CYC_QUEUETYPE_GRAPHICS).value();
+        VkQueue GQueue = vkbDevice.get_queue( (vkb::QueueType)CYC_QUEUETYPE_GRAPHICS).value();
 
-        VK_CHECK(vkQueueSubmit( Queue, 1, &submitInfo, curFrame->render_fence ));
+        VK_CHECK( vkQueueSubmit( GQueue, GQueueSubmits.size(), GQueueSubmits.data(), curFrame->render_fence ) );
+        GQueueSubmits.clear();
         //cyc_log("uhhh %p\n", renderPass)
 
         //Its presentation time, we have our rendered stuff, so we can now present it to the swapchain, hope it likes it...
@@ -1390,16 +1713,17 @@ int main()
         presentInfo.pImageIndices = &swpchainIndex;
 
         //Lets finally present our image! Show them what a gaping hole we left~ lmao
-        VK_CHECK(vkQueuePresentKHR( Queue, &presentInfo ));
+        VK_CHECK(vkQueuePresentKHR( GQueue, &presentInfo ));
 
         DeltaTime = cyc::CheckStopwatch(frameDelta).result.milliseconds;
         Keys.holdCpy = Keys.hold;
         Mouse.holdCpy = Mouse.hold;
 
         ++FRAME_NUMBER;
-        #else
-        cyc::WaitMS(17);
-        #endif
+
+        ImGui::EndFrame();
+        //ImGui::UpdatePlatformWindows();
+
     }
     
     //============================END OF RUNTIME=================================
@@ -1409,7 +1733,16 @@ int main()
 
     waitAllFences( frames );
 
-    cyc::RqueueUse( MeshDeletionQueue );
+    size_t keys_s = MeshKeys.size();
+    for ( size_t i = 0; i < keys_s; ++i )
+    {
+        //cyc::UnorderedGet( &Meshes, MeshKeys[ i ] ).d( &Meshes, &MeshKeys );
+    }
+    Meshes.clear();
+    MeshKeys.clear();
+
+    //ImPlot::DestroyContext( );
+    //ImGui::DestroyContext( );
     
     cyc::RqueueUse( SwapchainDeletionQueue );
     vkDestroySwapchainKHR( vkbDevice.device, swpchain.swapchain, nullptr );
@@ -1423,7 +1756,7 @@ int main()
     if ( cyc::CompareFlags( SDL_GetWindowFlags( mainwindow.sdl_handle ), SDL_WINDOW_MAXIMIZED ))
         maxed = true;
     wh += string_format( "%i\n%i\n%s\n%i", w, h, config[4].c_str(), maxed );
-    cyc::WriteFile( "cfg/config.txt", wh );
+    cyc::WriteFile( "config.txt", wh );
     
     cyc::RCqueueUse( &Shaders[ 0 ].Deletion );
 

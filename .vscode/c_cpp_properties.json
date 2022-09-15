@@ -10,8 +10,11 @@
                 "${workspaceFolder}/things/glm",
                 "${workspaceFolder}/things/tinyobjloader",
                 "${workspaceFolder}/things/stb",
+                "${workspaceFolder}/things/imgui-docking",
+                "${workspaceFolder}/things/implot-master",
                 "${workspaceFolder}/",
                 "C:/VulkanSDK/1.3.211.0/Include/vulkan",
+                "C:/VulkanSDK/1.3.211.0/Include",
                 "C:/VulkanSDK/1.3.211.0/Include/SDL2"
             ],
             "defines": [

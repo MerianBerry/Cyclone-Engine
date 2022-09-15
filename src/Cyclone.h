@@ -15,6 +15,7 @@
     //#pragma clang diagnostic ignored "-W#pragma-messages"
 #endif
 
+
 #define cyc_log(fmt, args...) {                                                                       \
     string newFmt="[%s:%s:%i] "; newFmt+=fmt;                                                           \
     string file = __FILE__;                                                                             \
@@ -53,6 +54,11 @@ namespace cyc
         string message;
         T result;
         Uint32 error_code = CYC_ERROR_SUCCESS;
+
+        operator T()
+        {
+            return result;
+        }
     };
 
     template<class T>
@@ -152,7 +158,8 @@ namespace cyc
         Uint32 present_mode;
     };
 
-    struct swapchain
+    typedef vkb::Swapchain* Swapchain;
+    struct T_Swapchain
     {
         VkPresentModeKHR presentmode;
 
@@ -191,11 +198,28 @@ namespace cyc
         const char* title = "Babys first LunarGE game";
         uint32_t flags = 0;
     };
+    class Window
+    {
+        public:
+        SDL_Window*             Handle;
+        SDL_WindowFlags         SDL_flags;
+
+        vkb::Device             Device;
+        vkb::PhysicalDevice     PhysicalDevice;
+        VkSurfaceKHR            Surface;
+        Swapchain               Swapchain;
+
+
+        VkExtent2D              Size = CYC_WINDOW_SIZE_DEFAULT;
+        glm::vec2               Pos  = { SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED };
+        const char*             title = "Babys first LunarGE game";
+
+    };
 
     struct cmd_queue
     {
-        VkQueue         queue;
-        Uint32          family;
+        VkQueue                 queue;
+        Uint32                  family;
     };
 
     struct cmd_obj
@@ -263,12 +287,44 @@ namespace cyc
         glm::vec3           scale = { 1.f, 1.f, 1.f };
         glm::vec3           rotation = { 0.f, 0.f, 0.f };
         vector< Vertex >    vertices;
-        string              name;
+        string              name = "";
         bool                render = false;
 
         AllocationBuffer    _vertexBuffer;
     };
-    using Dmesh = Dtype< Mesh >;
+    struct Dmesh
+    {
+        Mesh                x;
+        //VmaAllocator        a;
+        /*Lambda< void, std::unordered_map< string, Dmesh >*, vector< string >* > d =
+        [=]( std::unordered_map< string, Dmesh > *meshes,
+        vector< string >* keys )
+        -> void
+        {
+            printf( "HELP \"%s\"\n", x.name.c_str() );
+            x.render = false;
+            if ( meshes->find( x.name ) == meshes->end() )
+                printf( "hey it exits\n" );
+            else
+                printf( "it doestnt\n" );
+
+            auto o = (*meshes->find( x.name )).second;
+
+            printf( "hhhhhhhhhh\n" );
+            vmaDestroyBuffer( a, o.x._vertexBuffer._buffer, o.x._vertexBuffer._allocation );
+            meshes->erase( x.name );
+            printf( "dddddddddd\n" );
+            for ( int i = 0; i < keys->size(); ++i )
+            {
+                if ( keys->at( i ) == x.name )
+                    keys->erase( keys->begin() + i );
+            }
+        };
+        void Destroy()
+        {
+            vmaDestroyBuffer( a, x._vertexBuffer._buffer, x._vertexBuffer._allocation );
+        }*/
+    };
 
     struct MeshPushConstant
     {
@@ -416,18 +472,9 @@ namespace cyc
 
     Lresult< vector< Mesh >> LoadMeshes( vector< string > paths);
 
-    Lresult< vector< Mesh >> UploadMeshes( vector< Mesh > *meshes, VmaAllocator allocator, Lambda_vec< void > *deletionQueue );
+    Lresult< Mesh > LoadMesh( Mesh* mesh, string path );
 
-    inline bool __cdecl CheckLua( lua_State *L, int r )
-    {
-        if ( r != LUA_OK )
-        {
-            string errmsg = lua_tostring( L, -1 );
-            cyc_log( "Lua err: %s\n", errmsg.c_str() )
-            return false;
-        }
-        return true;
-    }
+    void UploadMesh( Dmesh *mesh, VmaAllocator allocator );
 
     template< typename T >
     inline T __cdecl UnorderedGet( std::unordered_map< string, T > *map, string ind )
@@ -456,6 +503,17 @@ namespace cyc
         {
             return true;
         }
+    }
+
+    inline bool __cdecl CheckLua( lua_State *L, int r )
+    {
+        if ( r != LUA_OK )
+        {
+            string errmsg = lua_tostring( L, -1 );
+            cyc_log( "Lua err: %s\n", errmsg.c_str() )
+            return false;
+        }
+        return true;
     }
 }
 

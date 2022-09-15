@@ -6,6 +6,11 @@
 #include "glm.hpp"
 #include "vulkan.h"
 #include "math.h"
+#include "../things/imgui-docking/imgui.h"
+#include "../things/imgui-docking/imgui_impl_vulkan.h"
+#include "../things/imgui-docking/imgui_impl_sdl.h"
+#include "implot.h"
+#include "implot_internal.h"
 #include <vector>
 #include <string>
 #include <stdexcept>
@@ -30,7 +35,6 @@ extern "C"
 #ifdef _WIN32
 #pragma comment(lib, "Lua/liblua54.a")
 #endif
-
 
 #undef main
 

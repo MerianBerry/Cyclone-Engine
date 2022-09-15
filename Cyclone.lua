@@ -96,28 +96,34 @@ function t.LoadMesh( path, name )
     return cpp_loadmesh( path, name )
 end
 
-t.Swapchain = { data = 0, create = function( self, int )
-    self.data = int
-    print ( self.data )
-end }
+function t.SetMeshState( name, mode )
+    if not ( mode == "hide" or mode == "show" or mode == "wire" or mode == "fill" ) then
+        print( mode .. "isnt a mesh state idiot" )
+    else
+        --cpp_SetMeshState( name, mode )
+    end
+end
 
-t.Scene = { data = { meshes = {}, r = 0, g = 0, b = 0, a = 0},
-Submit = function( self )
-
-end,
-DrawMesh = function( self, mesh )
-    self.meshes[ #self.meshes+1 ] = mesh
-end,
-DrawClear = function( self, r, g, b, a )
-    a = a or 255
-    if type( r ) ~= "number" or type( g ) ~= "number" or type( b ) ~= "number" or type( a ) ~= "number" then
+t.Scene = { data = { r = 0, g = 0, b = 0, a = 0},
+SetColor = function( self, r2, g2, b2, a2 )
+    a2 = a2 or 255
+    self.r = self.r or 0
+    self.g = self.g or 0
+    self.b = self.b or 0
+    self.a = self.a or 0
+    
+    if type( r2 ) ~= "number" or type( g2 ) ~= "number" or type( b2 ) ~= "number" or type( a2 ) ~= "number" then
         print "ERROR: DrawClear->a param isn't a number. all params MUST ALWAYS be a number"
     end
-
-    self.r = self.r * ( 1 - a  / 255 ) + r * ( a / 255 )
-    self.g = self.g * ( 1 - a  / 255 ) + g * ( a / 255 )
-    self.b = self.b * ( 1 - a  / 255 ) + b * ( a / 255 )
-    self.a = self.a * ( 1 - a  / 255 ) + a * ( a / 255 )
+    a3 = a2 / 255
+    a4 = 1 - self.a / 255
+    self.r = self.r * a4 + r2 * a3
+    self.g = self.g * a4 + g2 * a3
+    self.b = self.b * a4 + b2 * a3
+    self.a = self.a * a4 + a2 * a3
+end,
+DrawClear = function( self )
+    cpp_DrawClear( self.r, self.g, self.b )
 end }
 
 -- Gets the boolean value of the input key. Keys: Use the keys table. Modes: "pulse" and "hold", "pulse" by default
@@ -164,6 +170,36 @@ function t.Exit( code, message )
         message = ""
     end
     cpp_Exit( code, message )
+end
+
+function t.hslToRgb(h, s, l)
+    h = h / 360
+    s = s / 100
+    l = l / 100
+
+    local r, g, b;
+
+    if s == 0 then
+        r, g, b = l, l, l; -- achromatic
+    else
+        local function hue2rgb(p, q, t2 )
+            if t2 < 0 then t2 = t2 + 1 end
+            if t2 > 1 then t2 = t2 - 1 end
+            if t2 < 1 / 6 then return p + (q - p) * 6 * t2 end
+            if t2 < 1 / 2 then return q end
+            if t2 < 2 / 3 then return p + (q - p) * (2 / 3 - t2) * 6 end
+            return p;
+        end
+
+        local q = l < 0.5 and l * (1 + s) or l + s - l * s;
+        local p = 2 * l - q;
+        r = hue2rgb(p, q, h + 1 / 3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1 / 3);
+    end
+
+    if not a then a = 1 end
+    return r * 255, g * 255, b * 255, a * 255
 end
 
 function t.SetWindowSize( w, h )
