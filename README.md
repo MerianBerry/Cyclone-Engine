@@ -2,7 +2,7 @@
 Cyclone (Game engine / Graphics Engine) is a heavy in-development light-ish weight engine written in c++, and uses the Vulkan graphics api. *Planned* supported scripting languages are Lua and python. But Java and C# support is being looked into.
 
 
-### *NOTE: this readme is in progress, as things arent set in stone yet*
+### *NOTE: Cyclone is currently going to be dropped while lower level abstractions are being made. The engine will still be C/C++, but all low level processes are going to be handed off to other services, which are being produced right now.*
 
 [Heres](docs/documentation.md) the documentation
 
